@@ -19,13 +19,9 @@ def get_todays_tasks(email, password):
     
     # Get "today", only keep Day XX Mon, which Todoist uses
     today = datetime.utcnow().strftime("%a %d %b")
-    
     for item in response['items']:
-        if item['content'] == '3 Cracking the Code Interview Assessments':
-            print (item)
         due = item['due_date_utc']
         if due:
-            # Slicing :10 gives us the relevant parts
             if due[:10] == today:
                 tasks_today.append(item)
 
@@ -34,7 +30,12 @@ def get_todays_tasks(email, password):
 def main():
     v = get_todays_tasks('reddysachin2014@gmail.com', '')
     for i in v:
-        print(i['content'])
+        due_date = i['due_date_utc'].split(' ')[4]
+        print("{0}:".format(i['content']))
+        print("     priority: {0}".format(i['priority']))
+        print("     due_date: {0}".format(due_date))
+        print("     item_num: {0}".format(i['item_order']))
+        print("#------------------------------#")
 
 if __name__ == "__main__":
     main()
