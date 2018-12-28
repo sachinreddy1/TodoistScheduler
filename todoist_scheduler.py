@@ -32,7 +32,7 @@ def get_todays_tasks(email, password):
     return tasks_today
 
 def main():
-    v = get_todays_tasks('reddysachin2014@gmail.com', 'Atlas123')
+    v = get_todays_tasks('reddysachin2014@gmail.com', '')
     for i in v:
         print(i['content'])
 
