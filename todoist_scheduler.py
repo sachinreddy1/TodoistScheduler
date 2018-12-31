@@ -2,85 +2,145 @@ import todoist
 from datetime import datetime
 from dateutil import tz
 import queue
+import threading
+import operator
+import time
 
-# Log user in; switch to OAuth eventually...
 api = todoist.TodoistAPI()
+USERID = 'reddysachin2014@gmail.com'
+PASSWORD = ''
 
-def get_todays_tasks(email, password):
-    """
-    Get tasks due on the current utc day
-    :return: list of task dicts
-    """
-    # user = api.user.login(email, password)
-    api.user.login(email, password)
-    tasks_today = []
+class Timer(object):
+    def __init__(self):
+        self.pausestart = 0.0
+        self.elapsedpause = 0.0
+        pass
     
-    # Sync (load) data
-    response = api.sync()
+    def start(self, message="Started at: "):
+        self.start = datetime.now()
+        msg = str(self.start).split(' ')[1]
+        return message + msg
     
-    # Get "today", only keep Day XX Mon, which Todoist uses
-    today = datetime.utcnow().strftime("%a %d %b")
-    for item in response['items']:
-        due = item['due_date_utc']
-        if due:
-            due_est = datetimeConverter(due)
-            print("today", today)
-            print ("due_est:", due_est)
-            if due[:10] == today:
-                tasks_today.append(item)
-
-    return tasks_today
-
-def datetimeConverter(due):
-    from_zone = tz.tzutc()
-    to_zone = tz.tzlocal()
+    def stop(self, message="Total: "):
+        self.stop = datetime.now()
+        return message + str(self.stop - self.start)
     
-    utc = datetime.strptime(due, "%a %d %b %Y %H:%M:%S +0000")
-    utc = utc.replace(tzinfo=from_zone)
-    utc = utc.replace(tzinfo=from_zone)
-    central = utc.astimezone(to_zone)
-    return central
+    def now(self, message="Now: "):
+        return message + ": " + str(datetime.now())
+    
+    def elapsed(self, message="Elapsed: "):
+        return message + str(datetime.now() - self.start)
+    
+    def split(self, message="Pause at: "):
+        self.split_start = datetime.now()
+        return message + str(self.split_start).split(' ')[1]
+    
+    def unsplit(self, message="Elapsed pause: "):
+        msg = str(datetime.now() - self.split_start)
+        return message + msg
 
+class Application:
+    def __init__ (self):
+        self.user = USERID
+        self.password = PASSWORD
+        self.timer = Timer()
 
-def task_formatter(items):
-    d = {}
-    c = 1
-    for i in items:
-        dv = i['due_date_utc'].split(' ')[4].split(':')
-        due_date_val = int(dv[0])*100 + int(dv[1])
-        priority_val = i['priority']
-        item_val = i['item_order']
-        content = i['content']
-        val = (due_date_val, priority_val, item_val)
-        d[(c, content)]=val
-        c+=1
-    return d
+    def get_todays_tasks(self, email, password):
+        api.user.login(email, password)
+        tasks_today = []
+        response = api.sync()
+        today = datetime.utcnow().strftime("%a %d %b")
+        for item in response['items']:
+            due = item['due_date_utc']
+            if due:
+                due_est = self.datetimeConverter(due)
+                if due_est == today:
+                    tasks_today.append(item)
+        return tasks_today
+    
+    def getTasks(self):
+        v = self.get_todays_tasks(USERID, PASSWORD)
+        d = self.task_formatter(v)
+        l = self.sortTasks(d)
+        return l
+    
+    def sortTasks(self, d):
+        l = []
+        l = sorted(d.items(), key=operator.itemgetter(1))
+        return l
 
-def printItems(items):
-    print("#------------------------------#")
-    for i in items:
-        due_date = i['due_date_utc'].split(' ')[4]
-        print("{0}:".format(i['content']))
-        print("     priority: {0}".format(i['priority']))
-        print("     due_date: {0}".format(due_date))
-        print("     item_num: {0}".format(i['item_order']))
-        print("#------------------------------#")
+    def datetimeConverter(self, due):
+        from_zone = tz.tzutc()
+        to_zone = tz.tzlocal()
+        utc = datetime.strptime(due, "%a %d %b %Y %H:%M:%S +0000")
+        utc = utc.replace(tzinfo=from_zone)
+        utc = utc.replace(tzinfo=from_zone)
+        central = utc.astimezone(to_zone).strftime("%a %d %b")
+        return central
 
-def itemsQueue(items):
-    q = queue.PriorityQueue()
-    for i in items:
-        q.put(i)
-    return q
+    def task_formatter(self, items):
+        d = {}
+        for i in items:
+            dv = i['due_date_utc'].split(' ')[4].split(':')
+            due_date_val = int(dv[0])*100 + int(dv[1])
+            priority_val = i['priority']
+            item_val = i['item_order']
+            content = i['content']
+            id = i['id']
+            val = (due_date_val, priority_val, item_val)
+            d[(id, content)]=val
+        return d
+
+    def printItems(self, items):
+        print("============  Up Next:  ============")
+        for idx, i in enumerate(items):
+            id = i[0][0]
+            content = i[0][1]
+            print("| {0}. {1}".format((idx+1), content))
+        print("====================================")
+
+    def monitor(self):
+        helper = '''
+            ======  Command List  ======
+            - get / g (get tasks from Todoist's server)
+            - start / s
+            - pause / p
+            - done / d
+            - stats
+            - stop
+            ============================
+            '''
+        print(helper)
+        paused = False
+        while True:
+            arg = input('-->')
+            args = arg.split(' ')
+            if arg == '?' or arg == 'help':
+                print(helper)
+            elif arg == 'get' or arg.startswith('g'):
+                t = self.getTasks()
+                self.printItems(t)
+            elif arg == 'start' or arg == 's':
+                print (self.timer.start())
+            elif arg == 'pause' or arg == 'p':
+                if paused:
+                    paused = False
+                    print (self.timer.unsplit())
+                else:
+                    paused = True
+                    print (self.timer.split())
+            elif arg == 'done' or arg == 'd':
+                print (self.timer.stop())
+            elif arg == 'stats':
+                print("--")
+            else:
+                print('[ERROR] Invalid input arg %s' % arg)
+
 
 def main():
-    v = get_todays_tasks('reddysachin2014@gmail.com', '')
-    d = task_formatter(v)
-    i = [v for k, v in d.items()]
-    print (i)
-    q = itemsQueue(i)
-    while q.qsize() != 0:
-        k = q.get()
-        print(k)
+    a = Application()
+    a.monitor()
+
 
 if __name__ == "__main__":
     main()
