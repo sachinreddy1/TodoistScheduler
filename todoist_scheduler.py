@@ -11,7 +11,7 @@ import _pickle as pickle
 
 api = todoist.TodoistAPI()
 USERID = 'reddysachin2014@gmail.com'
-PASSWORD = 'Atlas123'
+PASSWORD = ''
 
 BLOCK_LEN = 1
 
