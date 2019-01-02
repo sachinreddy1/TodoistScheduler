@@ -10,6 +10,14 @@ api = todoist.TodoistAPI()
 USERID = 'reddysachin2014@gmail.com'
 PASSWORD = ''
 
+BLOCK_LEN = 10
+
+def blocksConverter (time1, time2):
+    d = time2.minute - time1.minute
+    blocks = d // 10
+    print (int(blocks))
+    return int(blocks)
+
 class Timer(object):
     def __init__(self):
         self.pausestart = 0.0
@@ -23,13 +31,15 @@ class Timer(object):
     
     def stop(self, message="Total: "):
         self.stop = datetime.now()
-        return message + str(self.stop - self.start)
+        return blocksConverter(self.start, self.stop)
     
     def now(self, message="Now: "):
         return message + ": " + str(datetime.now())
     
     def elapsed(self, message="Elapsed: "):
-        return message + str(datetime.now() - self.start)
+        t1 = self.start
+        t2 = datetime.now()
+        return str(t2 - t1)
     
     def split(self, message="Pause at: "):
         self.split_start = datetime.now()
@@ -44,8 +54,18 @@ class Application:
         self.user = USERID
         self.password = PASSWORD
         self.timer = Timer()
+        self.tasks = self.getTasks()
+        self.num_tasks = len(self.tasks)
+        self.started = False
+    
+        self.total_blocks = 0
+        self.leisure_blocks = 0
+    
+        self.goal_hrs = 0
+        self.goal_blocks = 0
 
     def get_todays_tasks(self, email, password):
+        
         api.user.login(email, password)
         tasks_today = []
         response = api.sync()
@@ -59,9 +79,11 @@ class Application:
         return tasks_today
     
     def getTasks(self):
+        print("Syncing...")
         v = self.get_todays_tasks(USERID, PASSWORD)
         d = self.task_formatter(v)
         l = self.sortTasks(d)
+        print("Done.")
         return l
     
     def sortTasks(self, d):
@@ -97,7 +119,22 @@ class Application:
             id = i[0][0]
             content = i[0][1]
             print("| {0}. {1}".format((idx+1), content))
-        print("====================================")
+
+    def printStats(self):
+        self.printItems(self.tasks)
+        print("==========  Statistics:  ===========")
+        print(" Goal: ")
+        print("-> Hours: " + str(self.goal_hrs))
+        print("-> Blocks: " + str(self.goal_blocks))
+        print(" Progress: ")
+        print("-> Blocks: " + str(self.total_blocks) + "/" + str(self.goal_blocks))
+        print("-> Percent: " + str( (float(self.total_blocks)/float(self.goal_blocks)) * 100.0) )
+        print("-> Tasks: " + str(self.num_tasks - len(self.tasks)) + "/" + str(self.num_tasks) )
+
+        if self.started:
+            print("Time: " + self.timer.elapsed())
+            print ("Blocks: " + str(self.total_blocks))
+        return
 
     def monitor(self):
         helper = '''
@@ -108,6 +145,7 @@ class Application:
             - done / d
             - stats
             - stop
+            - exit
             ============================
             '''
         print(helper)
@@ -118,10 +156,12 @@ class Application:
             if arg == '?' or arg == 'help':
                 print(helper)
             elif arg == 'get' or arg.startswith('g'):
-                t = self.getTasks()
-                self.printItems(t)
+                self.tasks = self.getTasks()
+                self.printItems(self.tasks)
             elif arg == 'start' or arg == 's':
+                self.timer = Timer()
                 print (self.timer.start())
+                self.started = True
             elif arg == 'pause' or arg == 'p':
                 if paused:
                     paused = False
@@ -130,17 +170,28 @@ class Application:
                     paused = True
                     print (self.timer.split())
             elif arg == 'done' or arg == 'd':
-                print (self.timer.stop())
+                self.total_blocks += self.timer.stop()
+                print ("Total: " + str(self.total_blocks))
             elif arg == 'stats':
-                print("--")
+                self.printStats()
+            elif arg == 'exit':
+                break
             else:
                 print('[ERROR] Invalid input arg %s' % arg)
 
+    def run(self):
+        if not self.user or not self.password:
+            self.user = input('Email:')
+            self.password = input('Password:')
+        
+        self.goal_hrs = int(input('Estimated # of hours:'))
+        self.goal_blocks = self.goal_hrs * 6
+        self.monitor()
+        return
 
 def main():
     a = Application()
-    a.monitor()
-
+    a.run()
 
 if __name__ == "__main__":
     main()
