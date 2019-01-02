@@ -5,23 +5,23 @@ import queue
 import threading
 import operator
 import time
+import os
+import math
+import _pickle as pickle
 
 api = todoist.TodoistAPI()
 USERID = 'reddysachin2014@gmail.com'
-PASSWORD = ''
+PASSWORD = 'Atlas123'
 
-BLOCK_LEN = 10
+BLOCK_LEN = 1
 
 def blocksConverter (time1, time2):
     d = time2.minute - time1.minute
-    blocks = d // 10
-    print (int(blocks))
+    blocks = math.floor(d / BLOCK_LEN)
     return int(blocks)
 
 class Timer(object):
     def __init__(self):
-        self.pausestart = 0.0
-        self.elapsedpause = 0.0
         pass
     
     def start(self, message="Started at: "):
@@ -39,15 +39,21 @@ class Timer(object):
     def elapsed(self, message="Elapsed: "):
         t1 = self.start
         t2 = datetime.now()
-        return str(t2 - t1)
+        return str(t2 - t1), blocksConverter(t1, t2)
     
     def split(self, message="Pause at: "):
         self.split_start = datetime.now()
         return message + str(self.split_start).split(' ')[1]
     
+    def getblocks(self):
+        return blocksConverter(self.start, datetime.now())
+    
     def unsplit(self, message="Elapsed pause: "):
         msg = str(datetime.now() - self.split_start)
         return message + msg
+
+    def unsplitblocks(self):
+        return blocksConverter(self.split_start, datetime.now())
 
 class Application:
     def __init__ (self):
@@ -60,12 +66,15 @@ class Application:
     
         self.total_blocks = 0
         self.leisure_blocks = 0
+        
+        self.curr_task_num = None
+        self.curr_task = None
+        self.task_blocks = 0
     
         self.goal_hrs = 0
         self.goal_blocks = 0
 
     def get_todays_tasks(self, email, password):
-        
         api.user.login(email, password)
         tasks_today = []
         response = api.sync()
@@ -82,13 +91,8 @@ class Application:
         print("Syncing...")
         v = self.get_todays_tasks(USERID, PASSWORD)
         d = self.task_formatter(v)
-        l = self.sortTasks(d)
+        l = sorted(d.items(), key=operator.itemgetter(1), reverse=False)
         print("Done.")
-        return l
-    
-    def sortTasks(self, d):
-        l = []
-        l = sorted(d.items(), key=operator.itemgetter(1))
         return l
 
     def datetimeConverter(self, due):
@@ -114,33 +118,48 @@ class Application:
         return d
 
     def printItems(self, items):
+        if self.curr_task:
+            print("==============  Now:  ==============")
+            print("|-> {0}".format(self.curr_task[0][1]))
         print("============  Up Next:  ============")
         for idx, i in enumerate(items):
             id = i[0][0]
             content = i[0][1]
-            print("| {0}. {1}".format((idx+1), content))
+            if i == self.curr_task:
+                print("| {0}. {1} <---".format((idx+1), content))
+            else:
+                print("| {0}. {1}".format((idx+1), content))
 
     def printStats(self):
+        os.system('clear')
+        if self.started:
+            v = self.timer.elapsed()
+            self.task_blocks = v[1]
+        
+        t = self.total_blocks
         self.printItems(self.tasks)
         print("==========  Statistics:  ===========")
-        print(" Goal: ")
-        print("-> Hours: " + str(self.goal_hrs))
-        print("-> Blocks: " + str(self.goal_blocks))
-        print(" Progress: ")
-        print("-> Blocks: " + str(self.total_blocks) + "/" + str(self.goal_blocks))
-        print("-> Percent: " + str( (float(self.total_blocks)/float(self.goal_blocks)) * 100.0) )
-        print("-> Tasks: " + str(self.num_tasks - len(self.tasks)) + "/" + str(self.num_tasks) )
+        print("|-> Goal: ")
+        print("|  Hours: " + str(self.goal_hrs))
+        print("|  Blocks: " + str(self.goal_blocks))
+        print("|-> Progress: ")
+        print("|  Blocks: " + str(t) + "/" + str(self.goal_blocks))
+        percent = round( float(t) / float(self.goal_blocks) * 100.0, 2)
+        print("|  Percent: " + str(percent) + "%")
+        print("|  Tasks: " + str(self.num_tasks - len(self.tasks)) + "/" + str(self.num_tasks))
 
         if self.started:
-            print("Time: " + self.timer.elapsed())
-            print ("Blocks: " + str(self.total_blocks))
-        return
+            print("=============  Status:  ============")
+            print("|-> {0}".format(self.curr_task[0][1]))
+            print("|  Time: " + v[0])
+            print("|  Blocks: " + str(self.task_blocks))
+        print("====================================")
 
     def monitor(self):
         helper = '''
             ======  Command List  ======
             - get / g (get tasks from Todoist's server)
-            - start / s
+            - start [task #]
             - pause / p
             - done / d
             - stats
@@ -150,6 +169,7 @@ class Application:
             '''
         print(helper)
         paused = False
+        statsflag = False
         while True:
             arg = input('-->')
             args = arg.split(' ')
@@ -158,40 +178,65 @@ class Application:
             elif arg == 'get' or arg.startswith('g'):
                 self.tasks = self.getTasks()
                 self.printItems(self.tasks)
-            elif arg == 'start' or arg == 's':
-                self.timer = Timer()
+            elif arg.startswith('start'):
+                if len(args) != 2:
+                    print('[ERROR FORMAT] start task_number')
+                    continue
+                v = int(args[1])
+                if v - 1 >= 0 and v - 1 < len(self.tasks):
+                    self.curr_task_num = v
+                    self.curr_task = self.tasks[self.curr_task_num-1]
+                    self.timer = Timer()
+                self.printStats()
                 print (self.timer.start())
+                print ('Current task: ' + self.curr_task[0][1])
                 self.started = True
             elif arg == 'pause' or arg == 'p':
                 if paused:
                     paused = False
+                    self.printStats()
                     print (self.timer.unsplit())
                 else:
                     paused = True
                     print (self.timer.split())
             elif arg == 'done' or arg == 'd':
-                self.total_blocks += self.timer.stop()
+                if not self.started:
+                    print('[ERROR TIMER] No task to complete')
+                    continue
+                del self.tasks[self.curr_task_num-1]
+                self.curr_task_num = None
+                self.curr_task = None
+                self.task_blocks = self.timer.stop()
+                self.total_blocks += self.task_blocks
+                self.started = False
+                self.printStats()
                 print ("Total: " + str(self.total_blocks))
             elif arg == 'stats':
                 self.printStats()
             elif arg == 'exit':
                 break
             else:
-                print('[ERROR] Invalid input arg %s' % arg)
+                self.printStats()
 
     def run(self):
         if not self.user or not self.password:
             self.user = input('Email:')
             self.password = input('Password:')
-        
-        self.goal_hrs = int(input('Estimated # of hours:'))
-        self.goal_blocks = self.goal_hrs * 6
+        if not self.goal_hrs and not self.goal_blocks:
+            self.goal_hrs = int(input('Estimated # of hours:'))
+            self.goal_blocks = self.goal_hrs * 6
         self.monitor()
         return
 
+pickle_path = '/Users/sachinreddy/Documents/Testing/TodoistScheduler/persistence.pickle'
 def main():
-    a = Application()
-    a.run()
+    if not os.path.exists(pickle_path):
+        a = Application()
+        a.run()
+        pickle.dump(a, open(pickle_path, "wb"))
+    else:
+        a = pickle.load(open(pickle_path, "rb"))
+        a.run()
 
 if __name__ == "__main__":
     main()
