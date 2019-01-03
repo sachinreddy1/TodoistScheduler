@@ -12,10 +12,10 @@ import _pickle as pickle
 
 api = todoist.TodoistAPI()
 pickle_path = os.getcwd() + '/misc/persistence.pickle'
-USERID = ''
+USERID = 'reddysachin2014@gmail.com'
 PASSWORD = ''
 
-BLOCK_LEN = 1
+BLOCK_LEN = 10
 
 class Timer(object):
     def __init__(self):
@@ -71,19 +71,19 @@ class Application:
         self.started = False
         self.paused = False
         
-        self.tasks = self.getTasks()
-        self.num_tasks = len(self.tasks)
-    
         self.total_blocks = 0
         self.leisure_blocks = 0
         
         self.curr_task_num = None
         self.curr_task = None
+        self.curr_item = None
+        
         self.task_blocks = 0
         self.task_leisure_blocks = 0
     
         self.goal_hrs = 0
         self.goal_blocks = 0
+        self.getTasks()
 
     def get_todays_tasks(self, email, password):
         api.user.login(email, password)
@@ -100,11 +100,11 @@ class Application:
     
     def getTasks(self):
         print("Syncing...")
-        v = self.get_todays_tasks(USERID, PASSWORD)
-        d = self.task_formatter(v)
-        l = sorted(d.items(), key=operator.itemgetter(1), reverse=False)
+        self.items = self.get_todays_tasks(USERID, PASSWORD)
+        d = self.task_formatter(self.items)
+        self.tasks = sorted(d.items(), key=operator.itemgetter(1), reverse=False)
+        self.num_tasks = len(self.tasks)
         print("Done.")
-        return l
 
     def datetimeConverter(self, due):
         from_zone = tz.tzutc()
@@ -157,7 +157,7 @@ class Application:
         print("|  Blocks: " + str(self.goal_blocks))
         print("|-> Progress: ")
         print("|  Blocks: " + str(self.total_blocks) + "/" + str(self.goal_blocks))
-        print("|  Leisure Blocks: " + str(self.leisure_blocks))
+        print("|  Break Blocks: " + str(self.leisure_blocks))
         percent = round( float(self.total_blocks) / float(self.goal_blocks) * 100.0, 2)
         print("|  Percent: " + str(percent) + "%")
         print("|  Tasks: " + str(self.num_tasks - len(self.tasks)) + "/" + str(self.num_tasks))
@@ -182,6 +182,7 @@ class Application:
             - stats
             - stop
             - exit
+            - terminate
             ============================
             '''
         print(helper)
@@ -201,6 +202,7 @@ class Application:
                 if v - 1 >= 0 and v - 1 < len(self.tasks):
                     self.curr_task_num = v
                     self.curr_task = self.tasks[self.curr_task_num-1]
+                    self.curr_item = self.items[self.curr_task_num-1]
                     self.timer = Timer()
                 self.printStats()
                 print (self.timer.start())
@@ -219,11 +221,15 @@ class Application:
                 if not self.started:
                     print('[ERROR TIMER] No task to complete')
                     continue
+                
                 del self.tasks[self.curr_task_num-1]
+                self.completeItem()
                 self.curr_task_num = None
                 self.curr_task = None
+                
                 self.task_blocks = self.timer.stop()
                 self.total_blocks += self.task_blocks
+                
                 self.started = False
                 self.printStats()
                 print ("Total: " + str(self.total_blocks))
@@ -231,8 +237,24 @@ class Application:
                 self.printStats()
             elif arg == 'exit':
                 break
+            elif arg == 'terminate':
+                self.clearCache()
+                break
             else:
                 self.printStats()
+
+    def completeItem(self):
+        item = api.items.get_by_id(self.curr_task[0][0])
+        item.complete()
+        api.commit()
+        print('COMPLETED: ', self.curr_task[0][1])
+
+    def clearCache(self):
+        if os.path.exists(pickle_path):
+            os.remove(pickle_path)
+            print('Cleared Cache.')
+        else:
+            print('No Cache to clear.')
 
     def run(self):
         if not self.user or not self.password:
