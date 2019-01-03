@@ -1,5 +1,6 @@
 import todoist
 from datetime import datetime
+from pytz import timezone
 from dateutil import tz
 import queue
 import threading
@@ -10,15 +11,11 @@ import math
 import _pickle as pickle
 
 api = todoist.TodoistAPI()
-USERID = 'reddysachin2014@gmail.com'
+pickle_path = os.getcwd() + '/misc/persistence.pickle'
+USERID = ''
 PASSWORD = ''
 
 BLOCK_LEN = 1
-
-def blocksConverter (time1, time2):
-    d = time2.minute - time1.minute
-    blocks = math.floor(d / BLOCK_LEN)
-    return int(blocks)
 
 class Timer(object):
     def __init__(self):
@@ -31,7 +28,7 @@ class Timer(object):
     
     def stop(self, message="Total: "):
         self.stop = datetime.now()
-        return blocksConverter(self.start, self.stop)
+        return self.blocksConverter(self.start, self.stop)
     
     def now(self, message="Now: "):
         return message + ": " + str(datetime.now())
@@ -39,30 +36,43 @@ class Timer(object):
     def elapsed(self, message="Elapsed: "):
         t1 = self.start
         t2 = datetime.now()
-        return str(t2 - t1), blocksConverter(t1, t2)
+        return str(t2 - t1), self.blocksConverter(t1, t2)
     
     def split(self, message="Pause at: "):
         self.split_start = datetime.now()
         return message + str(self.split_start).split(' ')[1]
     
     def getblocks(self):
-        return blocksConverter(self.start, datetime.now())
+        return self.blocksConverter(self.start, datetime.now())
     
     def unsplit(self, message="Elapsed pause: "):
         msg = str(datetime.now() - self.split_start)
-        return message + msg
+        return self.blocksConverter(self.split_start, datetime.now())
+    
+    def elapsedPause(self, message="Elapsed: "):
+        t1 = self.split_start
+        t2 = datetime.now()
+        return str(t2 - t1), self.blocksConverter(t1, t2)
 
     def unsplitblocks(self):
-        return blocksConverter(self.split_start, datetime.now())
+        return self.blocksConverter(self.split_start, datetime.now())
+
+    def blocksConverter(self, time1, time2):
+        d = time2.minute - time1.minute
+        blocks = math.floor(d / BLOCK_LEN)
+        return int(blocks)
 
 class Application:
     def __init__ (self):
         self.user = USERID
         self.password = PASSWORD
         self.timer = Timer()
+        
+        self.started = False
+        self.paused = False
+        
         self.tasks = self.getTasks()
         self.num_tasks = len(self.tasks)
-        self.started = False
     
         self.total_blocks = 0
         self.leisure_blocks = 0
@@ -70,6 +80,7 @@ class Application:
         self.curr_task_num = None
         self.curr_task = None
         self.task_blocks = 0
+        self.task_leisure_blocks = 0
     
         self.goal_hrs = 0
         self.goal_blocks = 0
@@ -78,7 +89,7 @@ class Application:
         api.user.login(email, password)
         tasks_today = []
         response = api.sync()
-        today = datetime.utcnow().strftime("%a %d %b")
+        today = datetime.now(timezone('EST')).strftime("%a %d %b")
         for item in response['items']:
             due = item['due_date_utc']
             if due:
@@ -133,26 +144,32 @@ class Application:
     def printStats(self):
         os.system('clear')
         if self.started:
-            v = self.timer.elapsed()
-            self.task_blocks = v[1]
-        
-        t = self.total_blocks
+            if self.paused:
+                v = self.timer.elapsedPause()
+                self.task_leisure_blocks = v[1]
+            else:
+                v = self.timer.elapsed()
+                self.task_blocks = v[1]
         self.printItems(self.tasks)
         print("==========  Statistics:  ===========")
         print("|-> Goal: ")
         print("|  Hours: " + str(self.goal_hrs))
         print("|  Blocks: " + str(self.goal_blocks))
         print("|-> Progress: ")
-        print("|  Blocks: " + str(t) + "/" + str(self.goal_blocks))
-        percent = round( float(t) / float(self.goal_blocks) * 100.0, 2)
+        print("|  Blocks: " + str(self.total_blocks) + "/" + str(self.goal_blocks))
+        print("|  Leisure Blocks: " + str(self.leisure_blocks))
+        percent = round( float(self.total_blocks) / float(self.goal_blocks) * 100.0, 2)
         print("|  Percent: " + str(percent) + "%")
         print("|  Tasks: " + str(self.num_tasks - len(self.tasks)) + "/" + str(self.num_tasks))
 
         if self.started:
-            print("=============  Status:  ============")
+            if self.paused:
+                print("=============  Break:  =============")
+            else:
+                print("============  Working:  ============")
             print("|-> {0}".format(self.curr_task[0][1]))
             print("|  Time: " + v[0])
-            print("|  Blocks: " + str(self.task_blocks))
+            print("|  Blocks: " + str(v[1]))
         print("====================================")
 
     def monitor(self):
@@ -168,8 +185,6 @@ class Application:
             ============================
             '''
         print(helper)
-        paused = False
-        statsflag = False
         while True:
             arg = input('-->')
             args = arg.split(' ')
@@ -192,12 +207,13 @@ class Application:
                 print ('Current task: ' + self.curr_task[0][1])
                 self.started = True
             elif arg == 'pause' or arg == 'p':
-                if paused:
-                    paused = False
+                if self.paused:
+                    self.paused = False
                     self.printStats()
-                    print (self.timer.unsplit())
+                    self.task_leisure_blocks += self.timer.unsplit()
+                    self.leisure_blocks += self.task_leisure_blocks
                 else:
-                    paused = True
+                    self.paused = True
                     print (self.timer.split())
             elif arg == 'done' or arg == 'd':
                 if not self.started:
@@ -228,7 +244,6 @@ class Application:
         self.monitor()
         return
 
-pickle_path = '/Users/sachinreddy/Documents/Testing/TodoistScheduler/persistence.pickle'
 def main():
     if not os.path.exists(pickle_path):
         a = Application()
