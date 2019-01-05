@@ -3,52 +3,51 @@ from pytz import timezone
 from dateutil import tz
 import math
 
-BLOCK_LEN = 1
+BLOCK_LEN = 10
+MIN_IN_HR = 60
 
 class Timer(object):
     def __init__(self):
-        pass
-    
-    def start(self, message="Started at: "):
+        self.elapsed_time = []
+        self.elapsed_pause = []
+
+    def start(self):
         self.start = datetime.now()
-        msg = str(self.start).split(' ')[1]
-        return message + msg
+        return "Started at: " + str(self.start).split(' ')[1]
     
-    def stop(self, message="Total: "):
+    def stop(self):
         self.stop = datetime.now()
+        t1 = self.start
+        t2 = self.stop
+        self.elapsed_time.append(t2 - t1)
         return self.blocksConverter(self.start, self.stop)
     
-    def now(self, message="Now: "):
-        return message + ": " + str(datetime.now())
+    def split(self):
+        self.split_start = datetime.now()
+        self.elapsed_time.append(self.split_start - self.start)
+        message = "Pause at: " + str(self.split_start).split(' ')[1]
+        blocks = self.blocksConverter(self.start, self.split_start)
+        return message, blocks
     
-    def elapsed(self, message="Elapsed: "):
+    def unsplit(self):
+        t1 = self.split_start
+        t2 = datetime.now()
+        self.start = t2
+        self.elapsed_pause.append(t2 - t1)
+        return self.blocksConverter(t1, t2)
+    
+    def elapsed(self):
         t1 = self.start
         t2 = datetime.now()
         return str(t2 - t1), self.blocksConverter(t1, t2)
     
-    def split(self, message="Pause at: "):
-        self.split_start = datetime.now()
-        return message + str(self.split_start).split(' ')[1]
-    
-    def getblocks(self):
-        return self.blocksConverter(self.start, datetime.now())
-    
-    def unsplit(self, message="Elapsed pause: "):
-        msg = str(datetime.now() - self.split_start)
-        return self.blocksConverter(self.split_start, datetime.now())
-    
-    def elapsedPause(self, message="Elapsed: "):
+    def elapsedPause(self):
         t1 = self.split_start
         t2 = datetime.now()
-        b = self.blocksConverter(t1, t2)
-        if b < 0:
-            print(t1.minute, t2.minute)
-        return str(t2 - t1), b
-    
-    def unsplitblocks(self):
-        return self.blocksConverter(self.split_start, datetime.now())
+        return str(t2 - t1), self.blocksConverter(t1, t2)
     
     def blocksConverter(self, time1, time2):
-        d = time2.minute - time1.minute
-        blocks = math.floor(d / BLOCK_LEN)
-        return int(blocks)
+        strval = str(time2-time1).split(":")
+        hrs = int(strval[0])
+        mins = int(strval[1])
+        return int(hrs*(MIN_IN_HR/BLOCK_LEN)) + int(mins/BLOCK_LEN)

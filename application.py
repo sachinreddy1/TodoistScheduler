@@ -22,6 +22,9 @@ class Application:
         self.total_blocks = 0
         self.leisure_blocks = 0
         
+        self.items = None
+        self.tasks = None
+        
         self.curr_task_num = None
         self.curr_task = None
         self.curr_item = None
@@ -48,7 +51,13 @@ class Application:
     
     def getTasks(self):
         print("Syncing...")
-        self.items = self.get_todays_tasks(USERID, PASSWORD)
+        temp_items = self.items
+        items = self.get_todays_tasks(USERID, PASSWORD)
+        if not items:
+            print('[ERROR] Items not properly synced.')
+            self.items = temp_items
+            return
+        self.items = items
         d = self.task_formatter(self.items)
         self.tasks = sorted(d.items(), key=operator.itemgetter(1), reverse=False)
         self.num_tasks = len(self.tasks)
@@ -93,11 +102,12 @@ class Application:
         os.system('clear')
         if self.started:
             if self.paused:
-                v = self.timer.elapsedPause()
-                self.task_leisure_blocks = v[1]
+                time, blocks = self.timer.elapsedPause()
+                self.task_leisure_blocks = blocks
             else:
-                v = self.timer.elapsed()
-                self.task_blocks = v[1]
+                time, blocks = self.timer.elapsed()
+                self.task_blocks = blocks
+
         self.printItems(self.tasks)
         print("==========  Statistics:  ===========")
         print("|-> Goal: ")
@@ -116,8 +126,8 @@ class Application:
             else:
                 print("============  Working:  ============")
             print("|-> {0}".format(self.curr_task[0][1]))
-            print("|  Time: " + v[0])
-            print("|  Blocks: " + str(v[1]))
+            print("|  Time: " + time)
+            print("|  Blocks: " + str(blocks))
         print("====================================")
 
     def monitor(self):
@@ -157,30 +167,29 @@ class Application:
                 print ('Current task: ' + self.curr_task[0][1])
                 self.started = True
             elif arg == 'pause' or arg == 'p':
-                    if self.paused:
-                        self.paused = False
-                        self.task_leisure_blocks += self.timer.unsplit()
-                        self.leisure_blocks += self.task_leisure_blocks
-                    else:
-                        self.paused = True
-                        print (self.timer.split())
-                        self.printStats()
+                if self.paused:
+                    self.paused = False
+                    self.task_leisure_blocks = self.timer.unsplit()
+                    self.leisure_blocks += self.task_leisure_blocks
+                else:
+                    self.paused = True
+                    msg, blocks = self.timer.split()
+                    self.total_blocks += blocks
+                    print(msg)
+                self.printStats()
             elif arg == 'done' or arg == 'd':
                 if not self.started:
                     print('[ERROR TIMER] No task to complete')
                     continue
-                    
-                    del self.tasks[self.curr_task_num-1]
-                    self.completeItem()
-                    self.curr_task_num = None
-                    self.curr_task = None
-                    
-                    self.task_blocks = self.timer.stop()
-                    self.total_blocks += self.task_blocks
-                    
-                    self.started = False
-                    self.printStats()
-                    print ("Total: " + str(self.total_blocks))
+                del self.tasks[self.curr_task_num-1]
+                self.completeItem()
+                self.curr_task_num = None
+                self.curr_task = None
+                self.task_blocks = self.timer.stop()
+                self.total_blocks += self.task_blocks
+                self.started = False
+                self.printStats()
+                print ("Total: " + str(self.total_blocks))
             elif arg == 'stats':
                 self.printStats()
             elif arg == 'exit':
@@ -196,13 +205,13 @@ class Application:
         item.complete()
         api.commit()
         print('COMPLETED: ', self.curr_task[0][1])
-        
-        def clearCache(self):
-            if os.path.exists(pickle_path):
-                os.remove(pickle_path)
-                print('Cleared Cache.')
-            else:
-                print('No Cache to clear.')
+
+    def clearCache(self):
+        if os.path.exists(pickle_path):
+            os.remove(pickle_path)
+            print('Cleared Cache.')
+        else:
+            print('No Cache to clear.')
 
     def run(self):
         if not self.user or not self.password:
@@ -210,6 +219,6 @@ class Application:
             self.password = input('Password:')
         if not self.goal_hrs and not self.goal_blocks:
             self.goal_hrs = int(input('Estimated # of hours:'))
-            self.goal_blocks = self.goal_hrs * 6
+            self.goal_blocks = self.goal_hrs * int(timer.MIN_IN_HR / timer.BLOCK_LEN)
         self.monitor()
         return
