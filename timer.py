@@ -3,7 +3,7 @@ from pytz import timezone
 from dateutil import tz
 import math
 
-BLOCK_LEN = 10
+BLOCK_LEN = 2
 MIN_IN_HR = 60
 
 class Timer(object):
@@ -13,7 +13,7 @@ class Timer(object):
 
     def start(self):
         self.start = datetime.now()
-        return "Started at: " + str(self.start).split(' ')[1]
+        return
     
     def stop(self):
         self.stop = datetime.now()
