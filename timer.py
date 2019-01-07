@@ -3,13 +3,12 @@ from pytz import timezone
 from dateutil import tz
 import math
 
-BLOCK_LEN = 2
+BLOCK_LEN = 1
 MIN_IN_HR = 60
 
 class Timer(object):
     def __init__(self):
-        self.elapsed_time = []
-        self.elapsed_pause = []
+        pass
 
     def start(self):
         self.start = datetime.now()
@@ -24,17 +23,15 @@ class Timer(object):
     
     def split(self):
         self.split_start = datetime.now()
-        self.elapsed_time.append(self.split_start - self.start)
-        message = "Pause at: " + str(self.split_start).split(' ')[1]
-        blocks = self.blocksConverter(self.start, self.split_start)
-        return message, blocks
+        t1 = self.start
+        t2 = self.split_start
+        return str(t2-t1), self.blocksConverter(t1, t2)
     
     def unsplit(self):
         t1 = self.split_start
         t2 = datetime.now()
         self.start = t2
-        self.elapsed_pause.append(t2 - t1)
-        return self.blocksConverter(t1, t2)
+        return str(t2-t1), self.blocksConverter(t1, t2)
     
     def elapsed(self):
         t1 = self.start
@@ -51,3 +48,4 @@ class Timer(object):
         hrs = int(strval[0])
         mins = int(strval[1])
         return int(hrs*(MIN_IN_HR/BLOCK_LEN)) + int(mins/BLOCK_LEN)
+

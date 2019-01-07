@@ -11,9 +11,10 @@ import threading
 import queue
 import time
 import todoist_scheduler
+import getpass
 
-USERID = 'reddysachin2014@gmail.com'
-PASSWORD = ''
+USERID = "reddysachin2014@gmail.com"
+PASSWORD = ""
 api = todoist.TodoistAPI()
 
 class Application:
@@ -21,51 +22,48 @@ class Application:
         self.user = USERID
         self.password = PASSWORD
         self.timer = timer.Timer()
-        
         self.q = queue.LifoQueue()
-        
         self.started = False
         self.paused = False
         
         self.total_blocks = 0
-        self.leisure_blocks = 0
+        self.break_blocks = 0
+        # total time and total break time
+        self.total_time = 0
+        self.break_time = 0
         
-        self.items = None
-        self.tasks = None
-        
+        self.items = []
+        self.tasks = []
         self.curr_task_num = None
         self.curr_task = None
         self.curr_item = None
         
+        # are these necessary?
         self.task_blocks = 0
-        self.task_leisure_blocks = 0
+        self.task_break_blocks = 0
         
         self.goal_hrs = 0
         self.goal_blocks = 0
-        self.getTasks()
     
-    def get_todays_tasks(self, email, password):
-        api.user.login(email, password)
-        tasks_today = []
+    def get_todays_tasks(self):
+        time.sleep(1)
+        api.user.login(self.user, self.password)
+        time.sleep(1)
         response = api.sync()
+        time.sleep(1)
         today = datetime.now(timezone('EST')).strftime("%a %d %b")
         for item in response['items']:
             due = item['due_date_utc']
             if due:
                 due_est = self.datetimeConverter(due)
                 if due_est == today:
-                    tasks_today.append(item)
-        return tasks_today
+                    self.items.append(item)
     
     def getTasks(self):
         print("Syncing...")
-        temp_items = self.items
-        items = self.get_todays_tasks(USERID, PASSWORD)
-        if not items:
-            print('[ERROR] Items not properly synced.')
-            self.items = temp_items
+        self.get_todays_tasks()
+        if not self.items:
             return
-        self.items = items
         d = self.task_formatter(self.items)
         self.tasks = sorted(d.items(), key=operator.itemgetter(1), reverse=False)
         self.num_tasks = len(self.tasks)
@@ -101,6 +99,7 @@ class Application:
         
         stdscr.clear()
         stdscr.refresh()
+        
         curses.start_color()
         curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
@@ -109,10 +108,11 @@ class Application:
     
         while True:
             stdscr.clear()
+            
             if self.started:
                 if self.paused:
                     t, b = self.timer.elapsedPause()
-                    self.task_leisure_blocks = b
+                    self.task_break_blocks = b
                 else:
                     t, b = self.timer.elapsed()
                     self.task_blocks = b
@@ -124,22 +124,44 @@ class Application:
             
             if self.curr_task:
                 currTask = "{}".format(self.curr_task[0][1])
-            else:
-                currTask = "{}".format(self.curr_task)
             
             upNext = "Up Next:"[:width-1]
             nextTasks = self.tasks
+            
+            help = "Help:"[:width-1]
+            help_1 = "-> start: s [task #]"[:width-1]
+            help_2 = "-> pause/unpause: p"[:width-1]
+            help_3 = "-> complete: d"[:width-1]
+            help_4 = "-> get: g "[:width-1]
+            help_5 = "-> clear: t"[:width-1]
             
             stats = "Statistics:"[:width-1]
             goal = "Goal:"[:width-1]
             goalhrs = "Hours: {}".format(self.goal_hrs)
             goalblocks = "Blocks: {}".format(self.goal_blocks)
+            
             progress = "Progress:"[:width-1]
             progressblocks = "Blocks: {}/{}".format(self.total_blocks, self.goal_blocks)
-            breakblocks = "Break Blocks: {}".format(self.leisure_blocks)
+            breakblocks = "Break Blocks: {}".format(self.break_blocks)
             percent = round(float(self.total_blocks) / float(self.goal_blocks) * 100.0, 2)
             pcent = "Percent: {}%".format(percent)
             tasks = "Tasks: {}/{}".format(self.num_tasks-len(self.tasks),self.num_tasks)
+            
+            tsec, sec = divmod(self.total_time, 60)
+            hr, min = divmod(tsec, 60)
+            totalTime = "Working Time: %d:%02d:%02d" % (hr, min, sec)
+            
+            tsec_, sec_ = divmod(self.break_time, 60)
+            hr_, min_ = divmod(tsec_, 60)
+            breakTime = "Break Time: %d:%02d:%02d" % (hr_, min_, sec_)
+            
+            
+            if self.total_blocks == 0 or self.break_blocks == 0:
+                eff = "N/A"
+            else:
+                # should replace this with time instead of blocks
+                eff = round(float(self.total_blocks) / float(self.break_blocks), 2)
+            efficiency = "Efficiency: {}".format(eff)
             
             status = "IDLE"
             if self.started:
@@ -173,10 +195,8 @@ class Application:
             # Turning on attributes for title
             stdscr.attron(curses.color_pair(2))
             stdscr.attron(curses.A_BOLD)
-            
             # Rendering title
             stdscr.addstr(start_y, start_x_title, title)
-            
             # Turning off attributes for title
             stdscr.attroff(curses.color_pair(2))
             stdscr.attroff(curses.A_BOLD)
@@ -185,7 +205,8 @@ class Application:
             stdscr.attron(curses.A_BOLD)
             stdscr.addstr(start_y + 1, 0, now)
             stdscr.attroff(curses.A_BOLD)
-            stdscr.addstr(start_y + 2, 0, currTask)
+            if self.curr_task:
+                stdscr.addstr(start_y + 2, 0, currTask)
             
             stdscr.attron(curses.A_BOLD)
             stdscr.addstr(start_y + 4, 0, upNext)
@@ -201,6 +222,16 @@ class Application:
                 else:
                     stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
             offset = start_y + 5 + len(nextTasks)
+            
+            stdscr.attron(curses.A_BOLD)
+            stdscr.addstr(offset+1, 0, help)
+            stdscr.attroff(curses.A_BOLD)
+            
+            stdscr.addstr(offset+2, 0, help_1)
+            stdscr.addstr(offset+3, 0, help_2)
+            stdscr.addstr(offset+4, 0, help_3)
+            stdscr.addstr(offset+5, 0, help_4)
+            stdscr.addstr(offset+6, 0, help_5)
                 
             stdscr.attron(curses.A_BOLD)
             stdscr.addstr(start_y+1, width-len(stats)-1, stats)
@@ -225,12 +256,14 @@ class Application:
             stdscr.addstr(start_y+9, width-len(breakblocks)-1, breakblocks)
             stdscr.addstr(start_y+10, width-len(pcent)-1, pcent)
             stdscr.addstr(start_y+11, width-len(tasks)-1, tasks)
+            stdscr.addstr(start_y+12, width-len(efficiency)-1, efficiency)
             
-            #
+            stdscr.addstr(start_y+14, width-len(totalTime)-1, totalTime)
+            stdscr.addstr(start_y+15, width-len(breakTime)-1, breakTime)
+            
             iput = "--> {}".format(arg)
             stdscr.addstr(height-3, 0, iput)
             stdscr.move(height-3, len(iput))
-            #
             
             if arg:
                 if arg.startswith('g'):
@@ -251,12 +284,14 @@ class Application:
                 elif arg.startswith('p'):
                     if self.paused:
                         self.paused = False
-                        self.task_leisure_blocks = self.timer.unsplit()
-                        self.leisure_blocks += self.task_leisure_blocks
+                        time_, blocks_ = self.timer.unsplit()
+                        self.break_time += self.getTotalSeconds(time_)
+                        self.break_blocks += blocks_
                     else:
                         self.paused = True
-                        msg, blocks = self.timer.split()
-                        self.total_blocks += blocks
+                        time_, blocks_ = self.timer.split()
+                        self.total_time += self.getTotalSeconds(time_)
+                        self.total_blocks += blocks_
                     k=[]
                     arg = ''
                 elif arg.startswith('d'):
@@ -281,12 +316,12 @@ class Application:
                 else:
                     pass
 
-            time.sleep(0.1)
+            time.sleep(0.125)
             stdscr.refresh()
 
     def inputting(self, stdscr):
         while True:
-            time.sleep(0.1)
+            time.sleep(0.125)
             if self.q.qsize() == 0:
                 k = stdscr.getch()
                 self.q.put(k)
@@ -306,10 +341,13 @@ class Application:
             print('No Cache to clear.')
 
     def run(self):
-        if not self.user or not self.password:
-            self.user = input('Email:')
-            self.password = input('Password:')
+        if len(self.user) == 0:
+            self.user = input('Email: ')
+        if len(self.password) == 0:
+            self.password = getpass.getpass('Password: ')
         
+        self.getTasks()
+
         if not self.goal_hrs and not self.goal_blocks:
             self.goal_hrs = int(input('Estimated # of hours:'))
             self.goal_blocks = self.goal_hrs * int(timer.MIN_IN_HR / timer.BLOCK_LEN)
@@ -321,3 +359,10 @@ class Application:
         t1.join()
         t2.join()
         return
+
+    def getTotalSeconds(self, s):
+        tp=s.split(':')
+        h = int(tp[0])
+        m = int(tp[1])
+        s = int(tp[2].split('.')[0])
+        return (h * 60 + m) * 60 + s
