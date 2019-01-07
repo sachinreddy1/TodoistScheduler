@@ -18,8 +18,7 @@ class Timer(object):
         self.stop = datetime.now()
         t1 = self.start
         t2 = self.stop
-        self.elapsed_time.append(t2 - t1)
-        return self.blocksConverter(self.start, self.stop)
+        return str(t2-t1), self.blocksConverter(self.start, self.stop)
     
     def split(self):
         self.split_start = datetime.now()

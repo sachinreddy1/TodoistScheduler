@@ -17,12 +17,13 @@ USERID = "reddysachin2014@gmail.com"
 PASSWORD = ""
 api = todoist.TodoistAPI()
 
+q = queue.LifoQueue()
+
 class Application:
     def __init__ (self):
         self.user = USERID
         self.password = PASSWORD
         self.timer = timer.Timer()
-        self.q = queue.LifoQueue()
         self.started = False
         self.paused = False
         
@@ -60,15 +61,13 @@ class Application:
                     self.items.append(item)
     
     def getTasks(self):
-        print("Syncing...")
         self.get_todays_tasks()
         if not self.items:
             return
         d = self.task_formatter(self.items)
         self.tasks = sorted(d.items(), key=operator.itemgetter(1), reverse=False)
         self.num_tasks = len(self.tasks)
-        print("Done.")
-    
+
     def datetimeConverter(self, due):
         from_zone = tz.tzutc()
         to_zone = tz.tzlocal()
@@ -92,13 +91,14 @@ class Application:
         return d
 
     def drawMonitor(self, stdscr):
+        global q
+        
+        stdscr.clear()
+        
         t = 0
         b = 0
         k=[]
         arg = ''
-        
-        stdscr.clear()
-        stdscr.refresh()
         
         curses.start_color()
         curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
@@ -108,6 +108,7 @@ class Application:
     
         while True:
             stdscr.clear()
+            
             
             if self.started:
                 if self.paused:
@@ -147,6 +148,8 @@ class Application:
             pcent = "Percent: {}%".format(percent)
             tasks = "Tasks: {}/{}".format(self.num_tasks-len(self.tasks),self.num_tasks)
             
+            timestring = "Time:"[:width-1]
+            
             tsec, sec = divmod(self.total_time, 60)
             hr, min = divmod(tsec, 60)
             totalTime = "Working Time: %d:%02d:%02d" % (hr, min, sec)
@@ -155,12 +158,18 @@ class Application:
             hr_, min_ = divmod(tsec_, 60)
             breakTime = "Break Time: %d:%02d:%02d" % (hr_, min_, sec_)
             
+            addstring = "+ {}".format('-'*len(totalTime))
             
-            if self.total_blocks == 0 or self.break_blocks == 0:
+            total_tsec_, total_sec_ = divmod(self.break_time + self.total_time, 60)
+            total_hr_, total_min_ = divmod(total_tsec_, 60)
+            totalTime_ = "Total Time: %d:%02d:%02d" % (total_hr_, total_min_, total_sec_)
+            
+            
+            if self.total_time == 0 or self.break_time == 0:
                 eff = "N/A"
             else:
                 # should replace this with time instead of blocks
-                eff = round(float(self.total_blocks) / float(self.break_blocks), 2)
+                eff = round(float(self.total_time) / float(self.break_time), 2)
             efficiency = "Efficiency: {}".format(eff)
             
             status = "IDLE"
@@ -175,14 +184,15 @@ class Application:
             start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
             start_y = 0
             
-            while self.q.qsize() != 0:
-                v = self.q.get()
+            while q.qsize() != 0:
+                v = q.get()
                 v_ = chr(v)
                 k.append(v_)
             if k:
                 if k[-1] == '\n':
                     k=[]
                 elif k[0] == 'q':
+                    stdscr.clear()
                     return
                 arg = " ".join(k)
             
@@ -258,8 +268,16 @@ class Application:
             stdscr.addstr(start_y+11, width-len(tasks)-1, tasks)
             stdscr.addstr(start_y+12, width-len(efficiency)-1, efficiency)
             
-            stdscr.addstr(start_y+14, width-len(totalTime)-1, totalTime)
-            stdscr.addstr(start_y+15, width-len(breakTime)-1, breakTime)
+            stdscr.attron(curses.color_pair(4))
+            stdscr.attron(curses.A_BOLD)
+            stdscr.addstr(start_y+14, width-len(timestring)-1, timestring)
+            stdscr.attroff(curses.color_pair(4))
+            stdscr.attroff(curses.A_BOLD)
+            
+            stdscr.addstr(start_y+15, width-len(totalTime)-1, totalTime)
+            stdscr.addstr(start_y+16, width-len(breakTime)-1, breakTime)
+            stdscr.addstr(start_y+17, width-len(addstring)-1, addstring)
+            stdscr.addstr(start_y+18, width-len(totalTime_)-1, totalTime_)
             
             iput = "--> {}".format(arg)
             stdscr.addstr(height-3, 0, iput)
@@ -303,8 +321,9 @@ class Application:
                     self.completeItem()
                     self.curr_task_num = None
                     self.curr_task = None
-                    self.task_blocks = self.timer.stop()
-                    self.total_blocks += self.task_blocks
+                    time_, blocks_ = self.timer.stop()
+                    self.total_time += self.getTotalSeconds(time_)
+                    self.total_blocks += blocks_
                     self.started = False
                     k=[]
                     arg = ''
@@ -315,16 +334,17 @@ class Application:
                     break
                 else:
                     pass
-
-            time.sleep(0.125)
             stdscr.refresh()
+            time.sleep(0.125)
+    
 
     def inputting(self, stdscr):
+        global q
         while True:
             time.sleep(0.125)
-            if self.q.qsize() == 0:
+            if q.qsize() == 0:
                 k = stdscr.getch()
-                self.q.put(k)
+                q.put(k)
                 if k == ord('q'):
                     return
 
@@ -345,8 +365,9 @@ class Application:
             self.user = input('Email: ')
         if len(self.password) == 0:
             self.password = getpass.getpass('Password: ')
-        
-        self.getTasks()
+
+        if not self.started:
+            self.getTasks()
 
         if not self.goal_hrs and not self.goal_blocks:
             self.goal_hrs = int(input('Estimated # of hours:'))
@@ -358,7 +379,8 @@ class Application:
         t2.start()
         t1.join()
         t2.join()
-        return
+
+
 
     def getTotalSeconds(self, s):
         tp=s.split(':')
