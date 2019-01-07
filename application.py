@@ -7,6 +7,10 @@ import timer
 import os
 import sys
 import curses
+import threading
+import queue
+import time
+import todoist_scheduler
 
 USERID = 'reddysachin2014@gmail.com'
 PASSWORD = ''
@@ -17,6 +21,8 @@ class Application:
         self.user = USERID
         self.password = PASSWORD
         self.timer = timer.Timer()
+        
+        self.q = queue.LifoQueue()
         
         self.started = False
         self.paused = False
@@ -86,59 +92,13 @@ class Application:
             val = (due_date_val, priority_val, item_val)
             d[(id, content)]=val
         return d
-    
-    def printItems(self, items):
-        if self.curr_task:
-            print("==============  Now:  ==============")
-            print("|-> {0}".format(self.curr_task[0][1]))
-        print("============  Up Next:  ============")
-        for idx, i in enumerate(items):
-            id = i[0][0]
-            content = i[0][1]
-            if i == self.curr_task:
-                print("| {0}. {1} <---".format((idx+1), content))
-            else:
-                print("| {0}. {1}".format((idx+1), content))
-
-    def printStats(self):
-        os.system('clear')
-        if self.started:
-            if self.paused:
-                time, blocks = self.timer.elapsedPause()
-                self.task_leisure_blocks = blocks
-            else:
-                time, blocks = self.timer.elapsed()
-                self.task_blocks = blocks
-
-        self.printItems(self.tasks)
-        print("==========  Statistics:  ===========")
-        print("|-> Goal: ")
-        print("|  Hours: " + str(self.goal_hrs))
-        print("|  Blocks: " + str(self.goal_blocks))
-        print("|-> Progress: ")
-        print("|  Blocks: " + str(self.total_blocks) + "/" + str(self.goal_blocks))
-        print("|  Break Blocks: " + str(self.leisure_blocks))
-        percent = round( float(self.total_blocks) / float(self.goal_blocks) * 100.0, 2)
-        print("|  Percent: " + str(percent) + "%")
-        print("|  Tasks: " + str(self.num_tasks - len(self.tasks)) + "/" + str(self.num_tasks))
-        
-        if self.started:
-            if self.paused:
-                print("=============  Break:  =============")
-            else:
-                print("============  Working:  ============")
-            print("|-> {0}".format(self.curr_task[0][1]))
-            print("|  Time: " + time)
-            print("|  Blocks: " + str(blocks))
-        print("====================================")
 
     def drawMonitor(self, stdscr):
-        arg = ''
-        status = ''
-        k = 0
         t = 0
         b = 0
-    
+        k=[]
+        arg = ''
+        
         stdscr.clear()
         stdscr.refresh()
         curses.start_color()
@@ -147,7 +107,8 @@ class Application:
         curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
         curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)
     
-        while (k != ord('q')):
+        while True:
+            stdscr.clear()
             if self.started:
                 if self.paused:
                     t, b = self.timer.elapsedPause()
@@ -155,10 +116,12 @@ class Application:
                 else:
                     t, b = self.timer.elapsed()
                     self.task_blocks = b
-            stdscr.clear()
+        
             height, width = stdscr.getmaxyx()
+            
             title = "---  Task Tracker  ---"[:width-1]
             now = "Now:"[:width-1]
+            
             if self.curr_task:
                 currTask = "{}".format(self.curr_task[0][1])
             else:
@@ -166,6 +129,7 @@ class Application:
             
             upNext = "Up Next:"[:width-1]
             nextTasks = self.tasks
+            
             stats = "Statistics:"[:width-1]
             goal = "Goal:"[:width-1]
             goalhrs = "Hours: {}".format(self.goal_hrs)
@@ -173,20 +137,32 @@ class Application:
             progress = "Progress:"[:width-1]
             progressblocks = "Blocks: {}/{}".format(self.total_blocks, self.goal_blocks)
             breakblocks = "Break Blocks: {}".format(self.leisure_blocks)
-            percent = round( float(self.total_blocks) / float(self.goal_blocks) * 100.0, 2)
+            percent = round(float(self.total_blocks) / float(self.goal_blocks) * 100.0, 2)
             pcent = "Percent: {}%".format(percent)
             tasks = "Tasks: {}/{}".format(self.num_tasks-len(self.tasks),self.num_tasks)
             
-            sts = "IDLE"
+            status = "IDLE"
             if self.started:
                 if self.paused:
-                    sts = "BREAK"
+                    status = "BREAK"
                 else:
-                    sts = "WORKING"
+                    status = "WORKING"
         
-            statusbarstr = "Press 'q' to exit | {} | Time: {} | Blocks: {}".format(sts, t, b)
+            statusbarstr = "Press 'q' to exit | {} | Time: {} | Blocks: {}".format(status, t, b)
+            
             start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
             start_y = 0
+            
+            while self.q.qsize() != 0:
+                v = self.q.get()
+                v_ = chr(v)
+                k.append(v_)
+            if k:
+                if k[-1] == '\n':
+                    k=[]
+                elif k[0] == 'q':
+                    return
+                arg = " ".join(k)
             
             # Render the status bar
             stdscr.attron(curses.color_pair(3))
@@ -249,60 +225,82 @@ class Application:
             stdscr.addstr(start_y+9, width-len(breakblocks)-1, breakblocks)
             stdscr.addstr(start_y+10, width-len(pcent)-1, pcent)
             stdscr.addstr(start_y+11, width-len(tasks)-1, tasks)
-
-            stdscr.move(height-3, 0)
-            stdscr.refresh()
             
-            k = stdscr.getch()
+            #
+            iput = "--> {}".format(arg)
+            stdscr.addstr(height-3, 0, iput)
+            stdscr.move(height-3, len(iput))
+            #
             
-            if k == ord('g'):
-                self.getTasks()
-            elif k == ord('s'):
-                t = int(chr(stdscr.getch()))
-                if t - 1 >= 0 and t - 1 < len(self.tasks):
-                    self.curr_task_num = t
-                    self.curr_task = self.tasks[self.curr_task_num-1]
-                    self.curr_item = self.items[self.curr_task_num-1]
-                    self.timer = timer.Timer()
-                self.timer.start()
-                self.started = True
-            elif k == ord('p'):
-                if self.paused:
-                    self.paused = False
-                    self.task_leisure_blocks = self.timer.unsplit()
-                    self.leisure_blocks += self.task_leisure_blocks
+            if arg:
+                if arg.startswith('g'):
+                    self.getTasks()
+                    k=[]
+                    arg = ''
+                elif len(k) == 2 and arg.startswith('s'):
+                    t = int(k[1])
+                    if t - 1 >= 0 and t - 1 < len(self.tasks):
+                        self.curr_task_num = t
+                        self.curr_task = self.tasks[self.curr_task_num-1]
+                        self.curr_item = self.items[self.curr_task_num-1]
+                        self.timer = timer.Timer()
+                        k=[]
+                        arg = ''
+                    self.timer.start()
+                    self.started = True
+                elif arg.startswith('p'):
+                    if self.paused:
+                        self.paused = False
+                        self.task_leisure_blocks = self.timer.unsplit()
+                        self.leisure_blocks += self.task_leisure_blocks
+                    else:
+                        self.paused = True
+                        msg, blocks = self.timer.split()
+                        self.total_blocks += blocks
+                    k=[]
+                    arg = ''
+                elif arg.startswith('d'):
+                    if not self.started:
+                        error_msg = "[ERROR TIMER] No task to complete."
+                        stdscr.addstr(height - 5, 0, error_msg)
+                        continue
+                    del self.tasks[self.curr_task_num-1]
+                    self.completeItem()
+                    self.curr_task_num = None
+                    self.curr_task = None
+                    self.task_blocks = self.timer.stop()
+                    self.total_blocks += self.task_blocks
+                    self.started = False
+                    k=[]
+                    arg = ''
+                elif arg.startswith('t'):
+                    self.clearCache()
+                    k=[]
+                    arg = ''
+                    break
                 else:
-                    self.paused = True
-                    msg, blocks = self.timer.split()
-                    self.total_blocks += blocks
-            elif k == ord('d'):
-                if not self.started:
-                    print('[ERROR TIMER] No task to complete')
-                    continue
-                del self.tasks[self.curr_task_num-1]
-                self.completeItem()
-                self.curr_task_num = None
-                self.curr_task = None
-                self.task_blocks = self.timer.stop()
-                self.total_blocks += self.task_blocks
-                self.started = False
-            elif k == ord('t'):
-                self.clearCache()
-                break
-            elif k == ord('q'):
-                break
-            else:
-                continue
+                    pass
+
+            time.sleep(0.1)
+            stdscr.refresh()
+
+    def inputting(self, stdscr):
+        while True:
+            time.sleep(0.1)
+            if self.q.qsize() == 0:
+                k = stdscr.getch()
+                self.q.put(k)
+                if k == ord('q'):
+                    return
 
     def completeItem(self):
         item = api.items.get_by_id(self.curr_task[0][0])
         item.complete()
         api.commit()
-        print('COMPLETED: ', self.curr_task[0][1])
 
     def clearCache(self):
-        if os.path.exists(pickle_path):
-            os.remove(pickle_path)
+        if os.path.exists(todoist_scheduler.pickle_path):
+            os.remove(todoist_scheduler.pickle_path)
             print('Cleared Cache.')
         else:
             print('No Cache to clear.')
@@ -311,8 +309,15 @@ class Application:
         if not self.user or not self.password:
             self.user = input('Email:')
             self.password = input('Password:')
+        
         if not self.goal_hrs and not self.goal_blocks:
             self.goal_hrs = int(input('Estimated # of hours:'))
             self.goal_blocks = self.goal_hrs * int(timer.MIN_IN_HR / timer.BLOCK_LEN)
-        curses.wrapper(self.drawMonitor)
+        
+        t1 = threading.Thread(target=curses.wrapper, args=(self.inputting,))
+        t2 = threading.Thread(target=curses.wrapper, args=(self.drawMonitor,))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
         return
