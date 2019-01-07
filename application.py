@@ -12,11 +12,9 @@ import queue
 import time
 import todoist_scheduler
 import getpass
+from globs import *
 
-USERID = "reddysachin2014@gmail.com"
-PASSWORD = ""
 api = todoist.TodoistAPI()
-
 q = queue.LifoQueue()
 
 class Application:
@@ -29,7 +27,6 @@ class Application:
         
         self.total_blocks = 0
         self.break_blocks = 0
-        # total time and total break time
         self.total_time = 0
         self.break_time = 0
         
@@ -92,9 +89,7 @@ class Application:
 
     def drawMonitor(self, stdscr):
         global q
-        
         stdscr.clear()
-        
         t = 0
         b = 0
         k=[]
@@ -108,8 +103,6 @@ class Application:
     
         while True:
             stdscr.clear()
-            
-            
             if self.started:
                 if self.paused:
                     t, b = self.timer.elapsedPause()
@@ -119,7 +112,6 @@ class Application:
                     self.task_blocks = b
         
             height, width = stdscr.getmaxyx()
-            
             title = "---  Task Tracker  ---"[:width-1]
             now = "Now:"[:width-1]
             
@@ -164,11 +156,9 @@ class Application:
             total_hr_, total_min_ = divmod(total_tsec_, 60)
             totalTime_ = "Total Time: %d:%02d:%02d" % (total_hr_, total_min_, total_sec_)
             
-            
             if self.total_time == 0 or self.break_time == 0:
                 eff = "N/A"
             else:
-                # should replace this with time instead of blocks
                 eff = round(float(self.total_time) / float(self.break_time), 2)
             efficiency = "Efficiency: {}".format(eff)
             
@@ -180,6 +170,8 @@ class Application:
                     status = "WORKING"
         
             statusbarstr = "Press 'q' to exit | {} | Time: {} | Blocks: {}".format(status, t, b)
+            filling = " "*((width-len(statusbarstr))//2 - len(statusbarstr)%2)
+            statusbarstr = filling + statusbarstr
             
             start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
             start_y = 0
@@ -187,7 +179,9 @@ class Application:
             while q.qsize() != 0:
                 v = q.get()
                 v_ = chr(v)
-                k.append(v_)
+                if v_ in LETTERS or v_ == '\n' or v_.isdigit():
+                    k.append(v_)
+                        
             if k:
                 if k[-1] == '\n':
                     k=[]
@@ -334,9 +328,9 @@ class Application:
                     break
                 else:
                     pass
+
             stdscr.refresh()
             time.sleep(0.125)
-    
 
     def inputting(self, stdscr):
         global q
@@ -344,9 +338,11 @@ class Application:
             time.sleep(0.125)
             if q.qsize() == 0:
                 k = stdscr.getch()
-                q.put(k)
-                if k == ord('q'):
-                    return
+                k_ = chr(k)
+                if k_ in LETTERS or k_ == '\n' or k_.isdigit():
+                    q.put(k)
+                    if k_ == 'q':
+                        return
 
     def completeItem(self):
         item = api.items.get_by_id(self.curr_task[0][0])
@@ -371,7 +367,7 @@ class Application:
 
         if not self.goal_hrs and not self.goal_blocks:
             self.goal_hrs = int(input('Estimated # of hours:'))
-            self.goal_blocks = self.goal_hrs * int(timer.MIN_IN_HR / timer.BLOCK_LEN)
+            self.goal_blocks = self.goal_hrs * int(MIN_IN_HR / BLOCK_LEN)
         
         t1 = threading.Thread(target=curses.wrapper, args=(self.inputting,))
         t2 = threading.Thread(target=curses.wrapper, args=(self.drawMonitor,))
@@ -379,8 +375,6 @@ class Application:
         t2.start()
         t1.join()
         t2.join()
-
-
 
     def getTotalSeconds(self, s):
         tp=s.split(':')

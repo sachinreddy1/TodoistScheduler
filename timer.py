@@ -2,9 +2,7 @@ from datetime import datetime
 from pytz import timezone
 from dateutil import tz
 import math
-
-BLOCK_LEN = 1
-MIN_IN_HR = 60
+from globs import *
 
 class Timer(object):
     def __init__(self):

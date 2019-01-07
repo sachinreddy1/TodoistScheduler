@@ -1,8 +1,7 @@
 import os
 import _pickle as pickle
 import application
-
-pickle_path = os.getcwd() + '/misc/application.data'
+from globs import *
 
 if __name__ == "__main__":
     if not os.path.exists(pickle_path):
@@ -12,3 +11,4 @@ if __name__ == "__main__":
     else:
         a = pickle.load(open(pickle_path, "rb"))
         a.run()
+        pickle.dump(a, open(pickle_path, "wb"))
