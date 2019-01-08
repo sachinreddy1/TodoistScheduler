@@ -408,8 +408,7 @@ class Application:
             if not f:
                 l = self.getTasks()
                 if l:
-                    print('got new tasks')
-                    self.sync_status = "+ {} tasks.".format(len(l))
+                    self.sync_status = "+ {} tasks".format(len(l))
                     if self.tasks:
                         for i in l:
                             self.tasks.append(i)
@@ -418,8 +417,7 @@ class Application:
                         self.tasks = l
                         self.num_tasks = len(self.tasks)
                 else:
-                    print('No new tasks.')
-                    self.sync_status = "No new tasks."
+                    self.sync_status = "+ 0 tasks"
 
     def getTotalSeconds(self, s):
         tp=s.split(':')
