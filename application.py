@@ -14,6 +14,7 @@ import todoist_scheduler
 import getpass
 from globs import *
 import signal
+import _pickle as pickle
 
 api = todoist.TodoistAPI()
 q = queue.LifoQueue()
@@ -33,13 +34,13 @@ class Application:
         self.break_blocks = 0
         self.total_time = 0
         self.break_time = 0
+        self.productive_time = 0
         
         self.items = []
         self.tasks = []
         self.curr_task_num = None
         self.curr_task = None
         
-        # necessary?
         self.task_blocks = 0
         self.task_break_blocks = 0
         self.task_time = 0
@@ -47,6 +48,7 @@ class Application:
         
         self.goal_hrs = 0
         self.goal_blocks = 0
+        
         self.sync_status = None
     
     def get_todays_tasks(self):
@@ -155,9 +157,10 @@ class Application:
             help = "Help:"[:width-1]
             help_1 = "-> start: s [task #]"[:width-1]
             help_2 = "-> pause/unpause: p"[:width-1]
-            help_3 = "-> complete: d"[:width-1]
+            help_3 = "-> complete: c"[:width-1]
             help_4 = "-> get: g "[:width-1]
-            help_5 = "-> clear: t"[:width-1]
+            help_5 = "-> terminate: t"[:width-1]
+            help_6 = "-> save: #"[:width-1]
             
             stats = "Statistics:"[:width-1]
             goal = "Goal:"[:width-1]
@@ -177,6 +180,26 @@ class Application:
             hr, min = divmod(tsec, 60)
             totalTime = "Working: %d:%02d:%02d" % (hr, min, sec)
             
+            tsec, sec = divmod(self.productive_time, 60)
+            hr, min = divmod(tsec, 60)
+            prodTime = "Productive: %d:%02d:%02d" % (hr, min, sec)
+            status = "IDLE"
+            if self.started:
+                if self.paused:
+                    status = "BREAK"
+                else:
+                    status = "WORKING"
+                    tsec, sec = divmod(self.task_time, 60)
+                    hr, min = divmod(tsec, 60)
+                    if (hr > 0) or (min >= STREAK_LEN):
+                        status = "* " + status
+                        status += " *"
+                        tsec, sec = divmod(self.productive_time + (self.task_time - (STREAK_LEN*60)), 60)
+                        hr, min = divmod(tsec, 60)
+                        prodTime = "Productive: %d:%02d:%02d" % (hr, min, sec)
+            else:
+                t = datetime.now(timezone('EST')).strftime("0:00:00.000000")
+                        
             tsec_, sec_ = divmod(self.break_time+self.task_break_time, 60)
             hr_, min_ = divmod(tsec_, 60)
             breakTime = "Break Time: %d:%02d:%02d" % (hr_, min_, sec_)
@@ -193,15 +216,8 @@ class Application:
             else:
                 eff = round(float(self.total_time+self.task_time) / float(self.break_time+self.task_break_time), 2)
                 efficiency = "Efficiency: {0:.2f}".format(eff)
-            
-            status = "IDLE"
-            if self.started:
-                if self.paused:
-                    status = "BREAK"
-                else:
-                    status = "WORKING"
         
-            statusbarstr = "Press 'q' to exit | {} | Time: {} | Blocks: {}".format(status, t, b)
+            statusbarstr = "Press 'q' to exit | {} | Time: {} | Blocks: {}".format(status, t[:7], b)
             filling = " "*((width-len(statusbarstr))//2 - len(statusbarstr)%2)
             statusbarstr = filling + statusbarstr
             
@@ -211,7 +227,7 @@ class Application:
             while q.qsize() != 0:
                 v = q.get()
                 v_ = chr(v)
-                if v_ in LETTERS or v_ == '\n' or v_.isdigit():
+                if v_ in LETTERS or v_ == '\n' or v_.isdigit() or v == ord('#'):
                     k.append(v_)
             if k:
                 if k[-1] == '\n':
@@ -266,6 +282,7 @@ class Application:
             stdscr.addstr(offset+4, 0, help_3)
             stdscr.addstr(offset+5, 0, help_4)
             stdscr.addstr(offset+6, 0, help_5)
+            stdscr.addstr(offset+7, 0, help_6)
                 
             stdscr.attron(curses.A_BOLD)
             stdscr.addstr(start_y+1, width-len(stats)-1, stats)
@@ -302,6 +319,8 @@ class Application:
             stdscr.addstr(start_y+16, width-len(breakTime)-1, breakTime)
             stdscr.addstr(start_y+17, width-len(addstring)-1, addstring)
             stdscr.addstr(start_y+18, width-len(totalTime_)-1, totalTime_)
+
+            stdscr.addstr(start_y+20, width-len(prodTime)-1, prodTime)
             
             iput = "--> {}".format(arg)
             stdscr.addstr(height-3, 0, iput)
@@ -331,13 +350,18 @@ class Application:
                     else:
                         self.paused = True
                         time_, blocks_ = self.timer.split()
+                        tsec, sec = divmod(self.task_time, 60)
+                        hr, min = divmod(tsec, 60)
+                        if (hr > 0) or (min >= STREAK_LEN):
+                            self.productive_time = self.productive_time + (self.task_time - (STREAK_LEN*60))
                         self.task_blocks = 0
                         self.task_time = 0
                         self.total_blocks += blocks_
                         self.total_time += self.getTotalSeconds(time_)
+
                     k=[]
                     arg = ''
-                elif arg.startswith('d'):
+                elif arg.startswith('c'):
                     if not self.started:
                         k=[]
                         arg = ''
@@ -355,6 +379,11 @@ class Application:
                     k=[]
                     arg = ''
                     break
+                elif arg.startswith('#'):
+                    k=[]
+                    arg = ''
+                    pickle.dump(self, open(pickle_path, "wb"))
+                    self.sync_status = "Saved."
                 else:
                     pass
 
@@ -368,7 +397,7 @@ class Application:
             if q.qsize() == 0:
                 k = stdscr.getch()
                 k_ = chr(k)
-                if k_ in LETTERS or k_ == '\n' or k_.isdigit():
+                if k_ in LETTERS or k_ == '\n' or k_.isdigit() or k == ord('#'):
                     q.put(k)
                     if k_ == 'g':
                         return False
