@@ -42,6 +42,8 @@ class Application:
         # necessary?
         self.task_blocks = 0
         self.task_break_blocks = 0
+        self.task_time = 0
+        self.task_break_time = 0
         
         self.goal_hrs = 0
         self.goal_blocks = 0
@@ -135,9 +137,11 @@ class Application:
             if self.started:
                 if self.paused:
                     t, b = self.timer.elapsedPause()
+                    self.task_break_time = self.getTotalSeconds(t)
                     self.task_break_blocks = b
                 else:
                     t, b = self.timer.elapsed()
+                    self.task_time = self.getTotalSeconds(t)
                     self.task_blocks = b
         
             height, width = stdscr.getmaxyx()
@@ -161,33 +165,34 @@ class Application:
             goalblocks = "Blocks: {}".format(self.goal_blocks)
             
             progress = "Progress:"[:width-1]
-            progressblocks = "Blocks: {}/{}".format(self.total_blocks, self.goal_blocks)
-            breakblocks = "Break Blocks: {}".format(self.break_blocks)
-            percent = round(float(self.total_blocks) / float(self.goal_blocks) * 100.0, 2)
+            progressblocks = "Blocks: {}/{}".format(self.total_blocks+self.task_blocks, self.goal_blocks)
+            breakblocks = "Break Blocks: {}".format(self.break_blocks+self.task_break_blocks)
+            percent = round(float(self.total_blocks+self.task_blocks) / float(self.goal_blocks) * 100.0, 2)
             pcent = "Percent: {}%".format(percent)
             tasks = "Tasks: {}/{}".format(self.num_tasks-len(self.tasks),self.num_tasks)
             
             timestring = "Time:"[:width-1]
             
-            tsec, sec = divmod(self.total_time, 60)
+            tsec, sec = divmod(self.total_time+self.task_time, 60)
             hr, min = divmod(tsec, 60)
             totalTime = "Working: %d:%02d:%02d" % (hr, min, sec)
             
-            tsec_, sec_ = divmod(self.break_time, 60)
+            tsec_, sec_ = divmod(self.break_time+self.task_break_time, 60)
             hr_, min_ = divmod(tsec_, 60)
             breakTime = "Break Time: %d:%02d:%02d" % (hr_, min_, sec_)
             
             addstring = "+ {}".format('-'*len(totalTime))
             
-            total_tsec_, total_sec_ = divmod(self.break_time + self.total_time, 60)
+            total_tsec_, total_sec_ = divmod(self.break_time + self.total_time + self.task_break_time + self.task_time, 60)
             total_hr_, total_min_ = divmod(total_tsec_, 60)
             totalTime_ = "Total Time: %d:%02d:%02d" % (total_hr_, total_min_, total_sec_)
             
-            if self.total_time == 0 or self.break_time == 0:
+            if (self.total_time+self.task_time) == 0 or (self.break_time+self.task_break_time) == 0:
                 eff = "N/A"
+                efficiency = "Efficiency: {}".format(eff)
             else:
-                eff = round(float(self.total_time) / float(self.break_time), 2)
-            efficiency = "Efficiency: {}".format(eff)
+                eff = round(float(self.total_time+self.task_time) / float(self.break_time+self.task_break_time), 2)
+                efficiency = "Efficiency: {0:.2f}".format(eff)
             
             status = "IDLE"
             if self.started:
@@ -319,13 +324,17 @@ class Application:
                     if self.paused:
                         self.paused = False
                         time_, blocks_ = self.timer.unsplit()
-                        self.break_time += self.getTotalSeconds(time_)
+                        self.task_break_blocks = 0
+                        self.task_break_time = 0
                         self.break_blocks += blocks_
+                        self.break_time += self.getTotalSeconds(time_)
                     else:
                         self.paused = True
                         time_, blocks_ = self.timer.split()
-                        self.total_time += self.getTotalSeconds(time_)
+                        self.task_blocks = 0
+                        self.task_time = 0
                         self.total_blocks += blocks_
+                        self.total_time += self.getTotalSeconds(time_)
                     k=[]
                     arg = ''
                 elif arg.startswith('d'):
