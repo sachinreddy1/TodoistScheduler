@@ -22,6 +22,10 @@ q = queue.LifoQueue()
 def handler(signum, frame):
     raise Exception
 
+class Storage:
+    def __init__(self):
+        self.d = {}
+
 class Application:
     def __init__ (self):
         self.user = USERID
@@ -49,6 +53,7 @@ class Application:
         self.goal_hrs = 0
         self.goal_blocks = 0
         
+        self.store = Storage()
         self.sync_status = None
     
     def get_todays_tasks(self):
@@ -128,6 +133,7 @@ class Application:
         b = 0
         k=[]
         arg = ''
+        store = self.store.d
         
         curses.start_color()
         curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
@@ -194,9 +200,10 @@ class Application:
                     if (hr > 0) or (min >= STREAK_LEN):
                         status = "* " + status
                         status += " *"
-                        tsec, sec = divmod(self.productive_time + (self.task_time - (STREAK_LEN*60)), 60)
-                        hr, min = divmod(tsec, 60)
-                        prodTime = "Productive: %d:%02d:%02d" % (hr, min, sec)
+                        tsec, prodsec = divmod(self.productive_time + (self.task_time - (STREAK_LEN*60)), 60)
+                        prodhr, prodmin = divmod(tsec, 60)
+                        prodTime = "Productive: %d:%02d:%02d" % (prodhr, prodmin, prodsec)
+                        
             else:
                 t = datetime.now(timezone('EST')).strftime("0:00:00.000000")
                         
@@ -236,6 +243,32 @@ class Application:
                     self.sync_status = None
                     k=[]
                 elif k[0] == 'q':
+                    tsec, sec = divmod(self.task_time, 60)
+                    hr, min = divmod(tsec, 60)
+                    prod_time = self.productive_time
+                    if (hr > 0) or (min >= STREAK_LEN):
+                        prod_time = self.productive_time + (self.task_time - (STREAK_LEN*60))
+                    new_now = datetime.now(timezone('EST')).strftime("%a %d %b %Y %H")
+                    if new_now not in store:
+                        store[new_now] = {
+                            'total_blocks': self.total_blocks + self.task_blocks,
+                            'break_blocks': self.break_blocks + self.task_break_blocks,
+                            'percent': percent,
+                            'efficiency': eff,
+                            'total_time': self.total_time + self.task_time,
+                            'break_time': self.break_time + self.task_break_time,
+                            'productive_time': self.productive_time
+                    }
+                    else:
+                        store[new_now] = {
+                            'total_blocks': self.total_blocks + self.task_blocks,
+                            'break_blocks': self.break_blocks + self.task_break_blocks,
+                            'percent': percent,
+                            'efficiency': eff,
+                            'total_time': self.total_time + self.task_time,
+                            'break_time': self.break_time + self.task_break_time,
+                            'productive_time': self.productive_time
+                    }
                     stdscr.clear()
                     return
                 elif k[0] == 'g':
@@ -362,7 +395,6 @@ class Application:
                         self.task_time = 0
                         self.total_blocks += blocks_
                         self.total_time += self.getTotalSeconds(time_)
-
                     k=[]
                     arg = ''
                 elif arg.startswith('c'):
@@ -381,7 +413,29 @@ class Application:
                 elif arg.startswith('#'):
                     k=[]
                     arg = ''
+                    new_now = datetime.now(timezone('EST')).strftime("%a %d %b %Y %H")
+                    if new_now not in store:
+                        store[new_now] = {
+                            'total_blocks': self.total_blocks + self.task_blocks,
+                            'break_blocks': self.break_blocks + self.task_break_blocks,
+                            'percent': percent,
+                            'efficiency': eff,
+                            'total_time': self.total_time + self.task_time,
+                            'break_time': self.break_time + self.task_break_time,
+                            'productive_time': self.productive_time
+                        }
+                    else:
+                        store[new_now] = {
+                            'total_blocks': self.total_blocks + self.task_blocks,
+                            'break_blocks': self.break_blocks + self.task_break_blocks,
+                            'percent': percent,
+                            'efficiency': eff,
+                            'total_time': self.total_time + self.task_time,
+                            'break_time': self.break_time + self.task_break_time,
+                            'productive_time': self.productive_time
+                        }
                     pickle.dump(self, open(pickle_path, "wb"))
+                    pickle.dump(store, open(pickle_data_path, "wb"))
                     self.sync_status = "Saved."
                 else:
                     pass
