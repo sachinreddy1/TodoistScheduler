@@ -7,8 +7,8 @@ MIN_IN_HR = 60
 
 STREAK_LEN = 15
 
-USERID = ""
-PASSWORD = ""
+USERID = "reddysachin2014@gmail.com"
+PASSWORD = "Atlas123"
 
 LETTERS = "qwertyuiopasdfghjklzxcvbnm"
 NUMBERS = "1234567890"

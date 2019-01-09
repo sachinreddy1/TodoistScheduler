@@ -55,6 +55,7 @@ class Application:
         tasks = []
         response = None
         items = None
+        print('Syncing...')
         while not response:
             try:
                 signal.signal(signal.SIGALRM, handler)
@@ -81,7 +82,7 @@ class Application:
         if l:
             self.items = l
             d = self.task_formatter(self.items)
-            t = sorted(d.items(), key=operator.itemgetter(1), reverse=False)
+            t = sorted(d.items(), key=operator.itemgetter(1), reverse=True)
             return t
 
     def userLogin(self):
@@ -114,7 +115,7 @@ class Application:
             item_val = i['item_order']
             content = i['content']
             id = i['id']
-            val = (due_date_val, priority_val, item_val)
+            val = due_date_val #(due_date_val, priority_val, item_val)
             d[(id, content)]=val
         return d
 
@@ -159,8 +160,7 @@ class Application:
             help_2 = "-> pause/unpause: p"[:width-1]
             help_3 = "-> complete: c"[:width-1]
             help_4 = "-> get: g "[:width-1]
-            help_5 = "-> terminate: t"[:width-1]
-            help_6 = "-> save: #"[:width-1]
+            help_5 = "-> save: #"[:width-1]
             
             stats = "Statistics:"[:width-1]
             goal = "Goal:"[:width-1]
@@ -202,13 +202,13 @@ class Application:
                         
             tsec_, sec_ = divmod(self.break_time+self.task_break_time, 60)
             hr_, min_ = divmod(tsec_, 60)
-            breakTime = "Break Time: %d:%02d:%02d" % (hr_, min_, sec_)
+            breakTime = "Break: %d:%02d:%02d" % (hr_, min_, sec_)
             
             addstring = "+ {}".format('-'*len(totalTime))
             
             total_tsec_, total_sec_ = divmod(self.break_time + self.total_time + self.task_break_time + self.task_time, 60)
             total_hr_, total_min_ = divmod(total_tsec_, 60)
-            totalTime_ = "Total Time: %d:%02d:%02d" % (total_hr_, total_min_, total_sec_)
+            totalTime_ = "Total: %d:%02d:%02d" % (total_hr_, total_min_, total_sec_)
             
             if (self.total_time+self.task_time) == 0 or (self.break_time+self.task_break_time) == 0:
                 eff = "N/A"
@@ -216,6 +216,8 @@ class Application:
             else:
                 eff = round(float(self.total_time+self.task_time) / float(self.break_time+self.task_break_time), 2)
                 efficiency = "Efficiency: {0:.2f}".format(eff)
+                if eff < 1.0:
+                    efficiency = "! - " + efficiency
         
             statusbarstr = "Press 'q' to exit | {} | Time: {} | Blocks: {}".format(status, t[:7], b)
             filling = " "*((width-len(statusbarstr))//2 - len(statusbarstr)%2)
@@ -241,86 +243,88 @@ class Application:
                     return
                 arg = "".join(k)
             
-            stdscr.attron(curses.color_pair(3))
-            stdscr.addstr(height-1, 0, statusbarstr)
-            stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
-            stdscr.attroff(curses.color_pair(3))
-            
-            stdscr.attron(curses.color_pair(2))
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(start_y, start_x_title, title)
-            stdscr.attroff(curses.color_pair(2))
-            stdscr.attroff(curses.A_BOLD)
-            
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(start_y + 1, 0, now)
-            stdscr.attroff(curses.A_BOLD)
-            if self.curr_task:
-                stdscr.addstr(start_y + 2, 0, currTask)
-            
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(start_y + 4, 0, upNext)
-            stdscr.attroff(curses.A_BOLD)
-            
-            for idx, i in enumerate(self.tasks):
-                if i == self.curr_task:
-                    stdscr.attron(curses.color_pair(4))
-                    stdscr.attron(curses.A_BOLD)
-                    stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
-                    stdscr.attroff(curses.color_pair(4))
-                    stdscr.attroff(curses.A_BOLD)
-                else:
-                    stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
-            offset = start_y + 5 + len(self.tasks)
-            
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(offset+1, 0, help)
-            stdscr.attroff(curses.A_BOLD)
-            
-            stdscr.addstr(offset+2, 0, help_1)
-            stdscr.addstr(offset+3, 0, help_2)
-            stdscr.addstr(offset+4, 0, help_3)
-            stdscr.addstr(offset+5, 0, help_4)
-            stdscr.addstr(offset+6, 0, help_5)
-            stdscr.addstr(offset+7, 0, help_6)
+            try:
+                stdscr.attron(curses.color_pair(3))
+                stdscr.addstr(height-1, 0, statusbarstr)
+                stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
+                stdscr.attroff(curses.color_pair(3))
                 
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(start_y+1, width-len(stats)-1, stats)
-            stdscr.attroff(curses.A_BOLD)
-            
-            stdscr.attron(curses.color_pair(4))
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(start_y+3, width-len(goal)-1, goal)
-            stdscr.attroff(curses.color_pair(4))
-            stdscr.attroff(curses.A_BOLD)
-            
-            stdscr.addstr(start_y+4, width-len(goalhrs)-1, goalhrs)
-            stdscr.addstr(start_y+5, width-len(goalblocks)-1, goalblocks)
-            
-            stdscr.attron(curses.color_pair(4))
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(start_y+7, width-len(progress)-1, progress)
-            stdscr.attroff(curses.color_pair(4))
-            stdscr.attroff(curses.A_BOLD)
-            
-            stdscr.addstr(start_y+8, width-len(progressblocks)-1, progressblocks)
-            stdscr.addstr(start_y+9, width-len(breakblocks)-1, breakblocks)
-            stdscr.addstr(start_y+10, width-len(pcent)-1, pcent)
-            stdscr.addstr(start_y+11, width-len(tasks)-1, tasks)
-            stdscr.addstr(start_y+12, width-len(efficiency)-1, efficiency)
-            
-            stdscr.attron(curses.color_pair(4))
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(start_y+14, width-len(timestring)-1, timestring)
-            stdscr.attroff(curses.color_pair(4))
-            stdscr.attroff(curses.A_BOLD)
-            
-            stdscr.addstr(start_y+15, width-len(totalTime)-1, totalTime)
-            stdscr.addstr(start_y+16, width-len(breakTime)-1, breakTime)
-            stdscr.addstr(start_y+17, width-len(addstring)-1, addstring)
-            stdscr.addstr(start_y+18, width-len(totalTime_)-1, totalTime_)
+                stdscr.attron(curses.color_pair(2))
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y, start_x_title, title)
+                stdscr.attroff(curses.color_pair(2))
+                stdscr.attroff(curses.A_BOLD)
+                
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y + 1, 0, now)
+                stdscr.attroff(curses.A_BOLD)
+                if self.curr_task:
+                    stdscr.addstr(start_y + 2, 0, currTask)
+                
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y + 4, 0, upNext)
+                stdscr.attroff(curses.A_BOLD)
+                
+                for idx, i in enumerate(self.tasks):
+                    if i == self.curr_task:
+                        stdscr.attron(curses.color_pair(4))
+                        stdscr.attron(curses.A_BOLD)
+                        stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
+                        stdscr.attroff(curses.color_pair(4))
+                        stdscr.attroff(curses.A_BOLD)
+                    else:
+                        stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
+                offset = start_y + 5 + len(self.tasks)
+                
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(offset+1, 0, help)
+                stdscr.attroff(curses.A_BOLD)
+                
+                stdscr.addstr(offset+2, 0, help_1)
+                stdscr.addstr(offset+3, 0, help_2)
+                stdscr.addstr(offset+4, 0, help_3)
+                stdscr.addstr(offset+5, 0, help_4)
+                stdscr.addstr(offset+6, 0, help_5)
+                
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y+1, width-len(stats)-1, stats)
+                stdscr.attroff(curses.A_BOLD)
+                
+                stdscr.attron(curses.color_pair(4))
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y+3, width-len(goal)-1, goal)
+                stdscr.attroff(curses.color_pair(4))
+                stdscr.attroff(curses.A_BOLD)
+                
+                stdscr.addstr(start_y+4, width-len(goalhrs)-1, goalhrs)
+                stdscr.addstr(start_y+5, width-len(goalblocks)-1, goalblocks)
+                
+                stdscr.attron(curses.color_pair(4))
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y+7, width-len(progress)-1, progress)
+                stdscr.attroff(curses.color_pair(4))
+                stdscr.attroff(curses.A_BOLD)
+                
+                stdscr.addstr(start_y+8, width-len(progressblocks)-1, progressblocks)
+                stdscr.addstr(start_y+9, width-len(breakblocks)-1, breakblocks)
+                stdscr.addstr(start_y+10, width-len(pcent)-1, pcent)
+                stdscr.addstr(start_y+11, width-len(tasks)-1, tasks)
+                stdscr.addstr(start_y+12, width-len(efficiency)-1, efficiency)
+                
+                stdscr.attron(curses.color_pair(4))
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y+14, width-len(timestring)-1, timestring)
+                stdscr.attroff(curses.color_pair(4))
+                stdscr.attroff(curses.A_BOLD)
+                
+                stdscr.addstr(start_y+15, width-len(totalTime)-1, totalTime)
+                stdscr.addstr(start_y+16, width-len(breakTime)-1, breakTime)
+                stdscr.addstr(start_y+17, width-len(addstring)-1, addstring)
+                stdscr.addstr(start_y+18, width-len(totalTime_)-1, totalTime_)
 
-            stdscr.addstr(start_y+20, width-len(prodTime)-1, prodTime)
+                stdscr.addstr(start_y+20, width-len(prodTime)-1, prodTime)
+            except:
+                pass
             
             iput = "--> {}".format(arg)
             stdscr.addstr(height-3, 0, iput)
@@ -374,11 +378,6 @@ class Application:
                         self.started = False
                         k=[]
                         arg = ''
-                elif arg.startswith('t'):
-                    self.clearCache()
-                    k=[]
-                    arg = ''
-                    break
                 elif arg.startswith('#'):
                     k=[]
                     arg = ''
@@ -396,13 +395,16 @@ class Application:
             time.sleep(0.125)
             if q.qsize() == 0:
                 k = stdscr.getch()
-                k_ = chr(k)
-                if k_ in LETTERS or k_ == '\n' or k_.isdigit() or k == ord('#'):
-                    q.put(k)
-                    if k_ == 'g':
-                        return False
-                    if k_ == 'q':
-                        return True
+                try:
+                    k_ = chr(k)
+                    if k_ in LETTERS or k_ == '\n' or k_.isdigit() or k == ord('#'):
+                        q.put(k)
+                        if k_ == 'g':
+                            return False
+                        if k_ == 'q':
+                            return True
+                except:
+                    pass
 
     def completeItem(self):
         item = None
@@ -413,7 +415,6 @@ class Application:
         del self.tasks[self.curr_task_num-1]
         self.curr_task_num = None
         self.curr_task = None
-
 
     def clearCache(self):
         if os.path.exists(todoist_scheduler.pickle_path):
