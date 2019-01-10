@@ -56,6 +56,7 @@ class Application:
         
         self.store = Storage()
         self.sync_status = None
+        self.sync_status_time = None
         self.today = datetime.now(timezone('EST')).strftime("%a %d %b")
     
     def get_todays_tasks(self):
@@ -241,6 +242,13 @@ class Application:
             if hour_check == "00:00":
                 self.hour_track = self.total_blocks
             
+            second_check = int(datetime.now(timezone('EST')).strftime("%S"))
+            if self.sync_status_time:
+                seconds_past = second_check - self.sync_status_time
+                if seconds_past%4 == 0 and seconds_past != 0:
+                    self.sync_status = None
+                    self.sync_status_time = None
+            
             tsec, sec = divmod(self.task_time, 60)
             hr, min = divmod(tsec, 60)
             prod_time = self.productive_time
@@ -277,6 +285,7 @@ class Application:
             if k:
                 if k[-1] == '\n':
                     self.sync_status = None
+                    self.sync_status_time = None
                     k=[]
                 elif k[0] == 'q':
                     tsec, sec = divmod(self.task_time, 60)
@@ -298,17 +307,20 @@ class Application:
                     stdscr.clear()
                     return
                 arg = "".join(k)
-                    
-            stdscr.attron(curses.color_pair(3))
-            stdscr.addstr(height-1, 0, statusbarstr)
-            stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
-            stdscr.attroff(curses.color_pair(3))
             
-            stdscr.attron(curses.color_pair(2))
-            stdscr.attron(curses.A_BOLD)
-            stdscr.addstr(start_y, start_x_title, title)
-            stdscr.attroff(curses.color_pair(2))
-            stdscr.attroff(curses.A_BOLD)
+            try:
+                stdscr.attron(curses.color_pair(3))
+                stdscr.addstr(height-1, 0, statusbarstr)
+                stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
+                stdscr.attroff(curses.color_pair(3))
+                
+                stdscr.attron(curses.color_pair(2))
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y, start_x_title, title)
+                stdscr.attroff(curses.color_pair(2))
+                stdscr.attroff(curses.A_BOLD)
+            except:
+                pass
             
             if not screen_flag:
                 try:
@@ -332,17 +344,6 @@ class Application:
                         else:
                             stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
                     offset = start_y + 5 + len(self.tasks)
-                    
-                    stdscr.attron(curses.A_BOLD)
-                    stdscr.addstr(offset+1, 0, help)
-                    stdscr.attroff(curses.A_BOLD)
-                    
-                    stdscr.addstr(offset+2, 0, help_1)
-                    stdscr.addstr(offset+3, 0, help_2)
-                    stdscr.addstr(offset+4, 0, help_3)
-                    stdscr.addstr(offset+5, 0, help_4)
-                    stdscr.addstr(offset+6, 0, help_5)
-                    stdscr.addstr(offset+7, 0, help_6)
                     
                     stdscr.attron(curses.A_BOLD)
                     stdscr.addstr(start_y+1, width-len(stats)-1, stats)
@@ -385,9 +386,11 @@ class Application:
                     pass
             else:
                 stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(start_y + 1, 0, "Records:"[:width-1])
+                record = "Records:"[:width-1]
+                stdscr.addstr(start_y + 1, width-len(record)-1, record)
                 stdscr.attroff(curses.A_BOLD)
-                stdscr.addstr(start_y + 2, 0, "By Hour (Date: Hour | Blocks):"[:width-1])
+                record_info = "By Hour (Date: Hour | Blocks):"[:width-1]
+                stdscr.addstr(start_y + 2, width-len(record_info)-1, record_info)
                 
                 longest_label_length = max([len(label) for label, _ in store.items()])
                 label_len = longest_label_length + len(" ▏ ## ")
@@ -408,7 +411,10 @@ class Application:
                             bar += chr(ord('█') + (8 - remainder))
                         bar = bar or  '▏'
                         v = f'{label.rjust(longest_label_length)} ▏ {count:#2d} {bar}'
-                        stdscr.addstr(4+count_, 0, v)
+                        try:
+                            stdscr.addstr(4+count_, int(width/2)-1, v)
+                        except:
+                            pass
                         count_+=1
                 else:
                     for label, val in store.items():
@@ -419,14 +425,31 @@ class Application:
                             bar += chr(ord('█') + (8 - remainder))
                         bar = bar or  '▏'
                         v = f'{label.rjust(longest_label_length)} ▏ {count:#2d} {bar}'
-                        stdscr.addstr(4+count_, 0, v)
+                        try:
+                            stdscr.addstr(4+count_, int(width/2)-1, v)
+                        except:
+                            pass
                         count_+=1
+            
+            try:
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(offset+1, 0, help)
+                stdscr.attroff(curses.A_BOLD)
                 
-            iput = "--> {}".format(arg)
-            stdscr.addstr(height-3, 0, iput)
-            if self.sync_status:
-                stdscr.addstr(height-3, width-len(self.sync_status)-1, self.sync_status)
-            stdscr.move(height-3, len(iput))
+                stdscr.addstr(offset+2, 0, help_1)
+                stdscr.addstr(offset+3, 0, help_2)
+                stdscr.addstr(offset+4, 0, help_3)
+                stdscr.addstr(offset+5, 0, help_4)
+                stdscr.addstr(offset+6, 0, help_5)
+                stdscr.addstr(offset+7, 0, help_6)
+                
+                iput = "--> {}".format(arg)
+                stdscr.addstr(height-3, 0, iput)
+                if self.sync_status:
+                    stdscr.addstr(height-3, width-len(self.sync_status)-1, self.sync_status)
+                stdscr.move(height-3, len(iput))
+            except:
+                pass
             
             if arg:
                 if len(k) == 2 and arg.startswith('s'):
@@ -493,6 +516,7 @@ class Application:
                     pickle.dump(self, open(pickle_path, "wb"))
                     pickle.dump(store, open(pickle_data_path, "wb"))
                     self.sync_status = "Saved."
+                    self.sync_status_time = int(datetime.now(timezone('EST')).strftime("%S"))
                 elif arg.startswith('r'):
                     if screen_flag:
                         screen_flag = False
@@ -565,6 +589,7 @@ class Application:
                 l = self.getTasks()
                 if l:
                     self.sync_status = "+ {} tasks".format(len(l))
+                    self.sync_status_time = int(datetime.now(timezone('EST')).strftime("%S"))
                     if self.tasks:
                         for i in l:
                             self.tasks.append(i)
@@ -574,6 +599,7 @@ class Application:
                         self.num_tasks = len(self.tasks)
                 else:
                     self.sync_status = "+ 0 tasks"
+                    self.sync_status_time = int(datetime.now(timezone('EST')).strftime("%S"))
 
     def getTotalSeconds(self, s):
         tp=s.split(':')
