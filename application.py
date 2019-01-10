@@ -551,8 +551,11 @@ class Application:
         item = None
         while not item:
             item = api.items.get_by_id(self.curr_task[0][0])
-            item.complete()
-            api.commit()
+            if item:
+                item.complete()
+                api.commit()
+            else:
+                break
         del self.tasks[self.curr_task_num-1]
         self.curr_task_num = None
         self.curr_task = None
@@ -578,6 +581,9 @@ class Application:
         if not self.goal_hrs and not self.goal_blocks:
             self.goal_hrs = int(input('Estimated # of hours: '))
             self.goal_blocks = self.goal_hrs * int(MIN_IN_HR / BLOCK_LEN)
+
+        if os.path.exists(pickle_data_path):
+            self.store.d = pickle.load(open(pickle_data_path, "rb"))
 
         f = False
         while not f:
