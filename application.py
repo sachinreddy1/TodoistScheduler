@@ -52,9 +52,11 @@ class Application:
         
         self.goal_hrs = 0
         self.goal_blocks = 0
+        self.hour_track = 0
         
         self.store = Storage()
         self.sync_status = None
+        self.today = datetime.now(timezone('EST')).strftime("%a %d %b")
     
     def get_todays_tasks(self):
         tasks = []
@@ -134,6 +136,7 @@ class Application:
         k=[]
         arg = ''
         store = self.store.d
+        screen_flag = False
         
         curses.start_color()
         curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
@@ -167,6 +170,7 @@ class Application:
             help_3 = "-> complete: c"[:width-1]
             help_4 = "-> get: g "[:width-1]
             help_5 = "-> save: #"[:width-1]
+            help_6 = "-> records: r"[:width-1]
             
             stats = "Statistics:"[:width-1]
             goal = "Goal:"[:width-1]
@@ -233,6 +237,38 @@ class Application:
             start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
             start_y = 0
             
+            hour_check = datetime.now(timezone('EST')).strftime("%M:%S")
+            if hour_check == "00:00":
+                self.hour_track = self.total_blocks
+            
+            tsec, sec = divmod(self.task_time, 60)
+            hr, min = divmod(tsec, 60)
+            prod_time = self.productive_time
+            if (hr > 0) or (min >= STREAK_LEN):
+                prod_time = self.productive_time + (self.task_time - (STREAK_LEN*60))
+            new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
+            store[new_now] = {
+                'total_blocks': self.total_blocks + self.task_blocks,
+                'break_blocks': self.break_blocks + self.task_break_blocks,
+                'percent': percent,
+                'efficiency': eff,
+                'total_time': self.total_time + self.task_time,
+                'break_time': self.break_time + self.task_break_time,
+                'productive_time': self.productive_time,
+                'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track
+            }
+
+            day_check = datetime.now(timezone('EST')).strftime("%a %d %b")
+            if self.today != day_check:
+                pickle.dump(self, open(pickle_path, "wb"))
+                pickle.dump(store, open(pickle_data_path, "wb"))
+                self.total_blocks = 0
+                self.break_blocks = 0
+                self.total_time = 0
+                self.break_time = 0
+                self.productive_time = 0
+                self.today = day_check
+
             while q.qsize() != 0:
                 v = q.get()
                 v_ = chr(v)
@@ -248,117 +284,144 @@ class Application:
                     prod_time = self.productive_time
                     if (hr > 0) or (min >= STREAK_LEN):
                         prod_time = self.productive_time + (self.task_time - (STREAK_LEN*60))
-                    new_now = datetime.now(timezone('EST')).strftime("%a %d %b %Y %H")
-                    if new_now not in store:
-                        store[new_now] = {
-                            'total_blocks': self.total_blocks + self.task_blocks,
-                            'break_blocks': self.break_blocks + self.task_break_blocks,
-                            'percent': percent,
-                            'efficiency': eff,
-                            'total_time': self.total_time + self.task_time,
-                            'break_time': self.break_time + self.task_break_time,
-                            'productive_time': self.productive_time
+                    new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
+                    store[new_now] = {
+                        'total_blocks': self.total_blocks + self.task_blocks,
+                        'break_blocks': self.break_blocks + self.task_break_blocks,
+                        'percent': percent,
+                        'efficiency': eff,
+                        'total_time': self.total_time + self.task_time,
+                        'break_time': self.break_time + self.task_break_time,
+                        'productive_time': self.productive_time,
+                        'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track
                     }
-                    else:
-                        store[new_now] = {
-                            'total_blocks': self.total_blocks + self.task_blocks,
-                            'break_blocks': self.break_blocks + self.task_break_blocks,
-                            'percent': percent,
-                            'efficiency': eff,
-                            'total_time': self.total_time + self.task_time,
-                            'break_time': self.break_time + self.task_break_time,
-                            'productive_time': self.productive_time
-                    }
-                    stdscr.clear()
-                    return
-                elif k[0] == 'g':
                     stdscr.clear()
                     return
                 arg = "".join(k)
+                    
+            stdscr.attron(curses.color_pair(3))
+            stdscr.addstr(height-1, 0, statusbarstr)
+            stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
+            stdscr.attroff(curses.color_pair(3))
             
-            try:
-                stdscr.attron(curses.color_pair(3))
-                stdscr.addstr(height-1, 0, statusbarstr)
-                stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
-                stdscr.attroff(curses.color_pair(3))
-                
-                stdscr.attron(curses.color_pair(2))
-                stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(start_y, start_x_title, title)
-                stdscr.attroff(curses.color_pair(2))
-                stdscr.attroff(curses.A_BOLD)
-                
-                stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(start_y + 1, 0, now)
-                stdscr.attroff(curses.A_BOLD)
-                if self.curr_task:
-                    stdscr.addstr(start_y + 2, 0, currTask)
-                
-                stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(start_y + 4, 0, upNext)
-                stdscr.attroff(curses.A_BOLD)
-                
-                for idx, i in enumerate(self.tasks):
-                    if i == self.curr_task:
-                        stdscr.attron(curses.color_pair(4))
-                        stdscr.attron(curses.A_BOLD)
-                        stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
-                        stdscr.attroff(curses.color_pair(4))
-                        stdscr.attroff(curses.A_BOLD)
-                    else:
-                        stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
-                offset = start_y + 5 + len(self.tasks)
-                
-                stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(offset+1, 0, help)
-                stdscr.attroff(curses.A_BOLD)
-                
-                stdscr.addstr(offset+2, 0, help_1)
-                stdscr.addstr(offset+3, 0, help_2)
-                stdscr.addstr(offset+4, 0, help_3)
-                stdscr.addstr(offset+5, 0, help_4)
-                stdscr.addstr(offset+6, 0, help_5)
-                
-                stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(start_y+1, width-len(stats)-1, stats)
-                stdscr.attroff(curses.A_BOLD)
-                
-                stdscr.attron(curses.color_pair(4))
-                stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(start_y+3, width-len(goal)-1, goal)
-                stdscr.attroff(curses.color_pair(4))
-                stdscr.attroff(curses.A_BOLD)
-                
-                stdscr.addstr(start_y+4, width-len(goalhrs)-1, goalhrs)
-                stdscr.addstr(start_y+5, width-len(goalblocks)-1, goalblocks)
-                
-                stdscr.attron(curses.color_pair(4))
-                stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(start_y+7, width-len(progress)-1, progress)
-                stdscr.attroff(curses.color_pair(4))
-                stdscr.attroff(curses.A_BOLD)
-                
-                stdscr.addstr(start_y+8, width-len(progressblocks)-1, progressblocks)
-                stdscr.addstr(start_y+9, width-len(breakblocks)-1, breakblocks)
-                stdscr.addstr(start_y+10, width-len(pcent)-1, pcent)
-                stdscr.addstr(start_y+11, width-len(tasks)-1, tasks)
-                stdscr.addstr(start_y+12, width-len(efficiency)-1, efficiency)
-                
-                stdscr.attron(curses.color_pair(4))
-                stdscr.attron(curses.A_BOLD)
-                stdscr.addstr(start_y+14, width-len(timestring)-1, timestring)
-                stdscr.attroff(curses.color_pair(4))
-                stdscr.attroff(curses.A_BOLD)
-                
-                stdscr.addstr(start_y+15, width-len(totalTime)-1, totalTime)
-                stdscr.addstr(start_y+16, width-len(breakTime)-1, breakTime)
-                stdscr.addstr(start_y+17, width-len(addstring)-1, addstring)
-                stdscr.addstr(start_y+18, width-len(totalTime_)-1, totalTime_)
+            stdscr.attron(curses.color_pair(2))
+            stdscr.attron(curses.A_BOLD)
+            stdscr.addstr(start_y, start_x_title, title)
+            stdscr.attroff(curses.color_pair(2))
+            stdscr.attroff(curses.A_BOLD)
+            
+            if not screen_flag:
+                try:
+                    stdscr.attron(curses.A_BOLD)
+                    stdscr.addstr(start_y + 1, 0, now)
+                    stdscr.attroff(curses.A_BOLD)
+                    if self.curr_task:
+                        stdscr.addstr(start_y + 2, 0, currTask)
+                    
+                    stdscr.attron(curses.A_BOLD)
+                    stdscr.addstr(start_y + 4, 0, upNext)
+                    stdscr.attroff(curses.A_BOLD)
+                    
+                    for idx, i in enumerate(self.tasks):
+                        if i == self.curr_task:
+                            stdscr.attron(curses.color_pair(4))
+                            stdscr.attron(curses.A_BOLD)
+                            stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
+                            stdscr.attroff(curses.color_pair(4))
+                            stdscr.attroff(curses.A_BOLD)
+                        else:
+                            stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
+                    offset = start_y + 5 + len(self.tasks)
+                    
+                    stdscr.attron(curses.A_BOLD)
+                    stdscr.addstr(offset+1, 0, help)
+                    stdscr.attroff(curses.A_BOLD)
+                    
+                    stdscr.addstr(offset+2, 0, help_1)
+                    stdscr.addstr(offset+3, 0, help_2)
+                    stdscr.addstr(offset+4, 0, help_3)
+                    stdscr.addstr(offset+5, 0, help_4)
+                    stdscr.addstr(offset+6, 0, help_5)
+                    stdscr.addstr(offset+7, 0, help_6)
+                    
+                    stdscr.attron(curses.A_BOLD)
+                    stdscr.addstr(start_y+1, width-len(stats)-1, stats)
+                    stdscr.attroff(curses.A_BOLD)
+                    
+                    stdscr.attron(curses.color_pair(4))
+                    stdscr.attron(curses.A_BOLD)
+                    stdscr.addstr(start_y+3, width-len(goal)-1, goal)
+                    stdscr.attroff(curses.color_pair(4))
+                    stdscr.attroff(curses.A_BOLD)
+                    
+                    stdscr.addstr(start_y+4, width-len(goalhrs)-1, goalhrs)
+                    stdscr.addstr(start_y+5, width-len(goalblocks)-1, goalblocks)
+                    
+                    stdscr.attron(curses.color_pair(4))
+                    stdscr.attron(curses.A_BOLD)
+                    stdscr.addstr(start_y+7, width-len(progress)-1, progress)
+                    stdscr.attroff(curses.color_pair(4))
+                    stdscr.attroff(curses.A_BOLD)
+                    
+                    stdscr.addstr(start_y+8, width-len(progressblocks)-1, progressblocks)
+                    stdscr.addstr(start_y+9, width-len(breakblocks)-1, breakblocks)
+                    stdscr.addstr(start_y+10, width-len(pcent)-1, pcent)
+                    stdscr.addstr(start_y+11, width-len(tasks)-1, tasks)
+                    stdscr.addstr(start_y+12, width-len(efficiency)-1, efficiency)
+                    
+                    stdscr.attron(curses.color_pair(4))
+                    stdscr.attron(curses.A_BOLD)
+                    stdscr.addstr(start_y+14, width-len(timestring)-1, timestring)
+                    stdscr.attroff(curses.color_pair(4))
+                    stdscr.attroff(curses.A_BOLD)
+                    
+                    stdscr.addstr(start_y+15, width-len(totalTime)-1, totalTime)
+                    stdscr.addstr(start_y+16, width-len(breakTime)-1, breakTime)
+                    stdscr.addstr(start_y+17, width-len(addstring)-1, addstring)
+                    stdscr.addstr(start_y+18, width-len(totalTime_)-1, totalTime_)
 
-                stdscr.addstr(start_y+20, width-len(prodTime)-1, prodTime)
-            except:
-                pass
-            
+                    stdscr.addstr(start_y+20, width-len(prodTime)-1, prodTime)
+                except:
+                    pass
+            else:
+                stdscr.attron(curses.A_BOLD)
+                stdscr.addstr(start_y + 1, 0, "Records:"[:width-1])
+                stdscr.attroff(curses.A_BOLD)
+                stdscr.addstr(start_y + 2, 0, "By Hour (Date: Hour | Blocks):"[:width-1])
+                
+                longest_label_length = max([len(label) for label, _ in store.items()])
+                label_len = longest_label_length + len(" ▏ ## ")
+                max_value = max([x['hour_blocks'] for _, x in store.items()])
+                increment = 1
+                if max_value != 0:
+                    increment = max_value /((width-label_len)-(width/2)-1)
+
+                count_ = 0
+                dlen = len(store)-7
+                if dlen > height:
+                    temp_store = {k: store[k] for k in list(store)[dlen-height:]}
+                    for label, val in temp_store.items():
+                        count = val['hour_blocks']
+                        bar_chunks, remainder = divmod(int(count * 8 / increment), 8)
+                        bar = '█' * bar_chunks
+                        if remainder > 0:
+                            bar += chr(ord('█') + (8 - remainder))
+                        bar = bar or  '▏'
+                        v = f'{label.rjust(longest_label_length)} ▏ {count:#2d} {bar}'
+                        stdscr.addstr(4+count_, 0, v)
+                        count_+=1
+                else:
+                    for label, val in store.items():
+                        count = val['hour_blocks']
+                        bar_chunks, remainder = divmod(int(count * 8 / increment), 8)
+                        bar = '█' * bar_chunks
+                        if remainder > 0:
+                            bar += chr(ord('█') + (8 - remainder))
+                        bar = bar or  '▏'
+                        v = f'{label.rjust(longest_label_length)} ▏ {count:#2d} {bar}'
+                        stdscr.addstr(4+count_, 0, v)
+                        count_+=1
+                
             iput = "--> {}".format(arg)
             stdscr.addstr(height-3, 0, iput)
             if self.sync_status:
@@ -410,33 +473,33 @@ class Application:
                         self.started = False
                         k=[]
                         arg = ''
+                elif arg.startswith('g'):
+                    stdscr.clear()
+                    return
                 elif arg.startswith('#'):
                     k=[]
                     arg = ''
-                    new_now = datetime.now(timezone('EST')).strftime("%a %d %b %Y %H")
-                    if new_now not in store:
-                        store[new_now] = {
-                            'total_blocks': self.total_blocks + self.task_blocks,
-                            'break_blocks': self.break_blocks + self.task_break_blocks,
-                            'percent': percent,
-                            'efficiency': eff,
-                            'total_time': self.total_time + self.task_time,
-                            'break_time': self.break_time + self.task_break_time,
-                            'productive_time': self.productive_time
-                        }
-                    else:
-                        store[new_now] = {
-                            'total_blocks': self.total_blocks + self.task_blocks,
-                            'break_blocks': self.break_blocks + self.task_break_blocks,
-                            'percent': percent,
-                            'efficiency': eff,
-                            'total_time': self.total_time + self.task_time,
-                            'break_time': self.break_time + self.task_break_time,
-                            'productive_time': self.productive_time
-                        }
+                    new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
+                    store[new_now] = {
+                        'total_blocks': self.total_blocks + self.task_blocks,
+                        'break_blocks': self.break_blocks + self.task_break_blocks,
+                        'percent': percent,
+                        'efficiency': eff,
+                        'total_time': self.total_time + self.task_time,
+                        'break_time': self.break_time + self.task_break_time,
+                        'productive_time': self.productive_time,
+                        'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track
+                    }
                     pickle.dump(self, open(pickle_path, "wb"))
                     pickle.dump(store, open(pickle_data_path, "wb"))
                     self.sync_status = "Saved."
+                elif arg.startswith('r'):
+                    if screen_flag:
+                        screen_flag = False
+                    else:
+                        screen_flag = True
+                    k=[]
+                    arg = ''
                 else:
                     pass
 
@@ -482,14 +545,14 @@ class Application:
             self.user = input('Email: ')
         if len(self.password) == 0:
             self.password = getpass.getpass('Password: ')
-
+        
         if not self.started:
             self.userLogin()
             self.tasks = self.getTasks()
             self.num_tasks = len(self.tasks)
 
         if not self.goal_hrs and not self.goal_blocks:
-            self.goal_hrs = int(input('Estimated # of hours:'))
+            self.goal_hrs = int(input('Estimated # of hours: '))
             self.goal_blocks = self.goal_hrs * int(MIN_IN_HR / BLOCK_LEN)
 
         f = False

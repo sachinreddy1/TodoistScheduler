@@ -17,6 +17,9 @@ complete: c
 get: g
 save: #
 
+##DEPENDENCIES:
+pip3 install gnuplotlib
+
 The application uses TodoistAPI to collect items and tasks for the tracker.
 
 
