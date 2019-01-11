@@ -309,11 +309,6 @@ class Application:
                 arg = "".join(k)
             
             try:
-                stdscr.attron(curses.color_pair(3))
-                stdscr.addstr(height-1, 0, statusbarstr)
-                stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
-                stdscr.attroff(curses.color_pair(3))
-                
                 stdscr.attron(curses.color_pair(2))
                 stdscr.attron(curses.A_BOLD)
                 stdscr.addstr(start_y, start_x_title, title)
@@ -392,6 +387,8 @@ class Application:
                 record_info = "By Hour (Date: Hour | Blocks):"[:width-1]
                 stdscr.addstr(start_y + 2, width-len(record_info)-1, record_info)
                 
+                dlen = len(store)
+
                 longest_label_length = max([len(label) for label, _ in store.items()])
                 label_len = longest_label_length + len(" ▏ ## ")
                 max_value = max([x['hour_blocks'] for _, x in store.items()])
@@ -400,9 +397,8 @@ class Application:
                     increment = max_value /((width-label_len)-(width/2)-1)
 
                 count_ = 0
-                dlen = len(store)-7
-                if dlen > height:
-                    temp_store = {k: store[k] for k in list(store)[dlen-height:]}
+                if dlen >= 24:
+                    temp_store = {k: store[k] for k in list(store)[dlen-24:]}
                     for label, val in temp_store.items():
                         count = val['hour_blocks']
                         bar_chunks, remainder = divmod(int(count * 8 / increment), 8)
@@ -412,9 +408,14 @@ class Application:
                         bar = bar or  '▏'
                         v = f'{label.rjust(longest_label_length)} ▏ {count:#2d} {bar}'
                         try:
+                            if label == list(store)[len(store)-1]:
+                                stdscr.attron(curses.color_pair(4))
+                                stdscr.attron(curses.A_BOLD)
                             stdscr.addstr(4+count_, int(width/2)-1, v)
                         except:
                             pass
+                        stdscr.attroff(curses.color_pair(4))
+                        stdscr.attroff(curses.A_BOLD)
                         count_+=1
                 else:
                     for label, val in store.items():
@@ -426,9 +427,14 @@ class Application:
                         bar = bar or  '▏'
                         v = f'{label.rjust(longest_label_length)} ▏ {count:#2d} {bar}'
                         try:
+                            if label == list(store)[len(store)-1]:
+                                stdscr.attron(curses.color_pair(4))
+                                stdscr.attron(curses.A_BOLD)
                             stdscr.addstr(4+count_, int(width/2)-1, v)
                         except:
                             pass
+                        stdscr.attroff(curses.color_pair(4))
+                        stdscr.attroff(curses.A_BOLD)
                         count_+=1
             
             try:
@@ -446,13 +452,22 @@ class Application:
                 iput = "--> {}".format(arg)
                 stdscr.addstr(height-3, 0, iput)
                 if self.sync_status:
-                    stdscr.addstr(height-3, width-len(self.sync_status)-1, self.sync_status)
+                    stdscr.addstr(height-3, int(width/2)-int(len(self.sync_status))-3, self.sync_status)
+                
+                try:
+                    stdscr.attron(curses.color_pair(3))
+                    stdscr.addstr(height-1, 0, statusbarstr)
+                    stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
+                    stdscr.attroff(curses.color_pair(3))
+                except:
+                    pass
+                
                 stdscr.move(height-3, len(iput))
             except:
                 pass
             
             if arg:
-                if len(k) == 2 and arg.startswith('s'):
+                if len(k) == 2 and arg.startswith('s') and k[1].isdigit():
                     t = int(k[1])
                     if t - 1 >= 0 and t - 1 < len(self.tasks):
                         self.curr_task_num = t
@@ -594,6 +609,7 @@ class Application:
             if not f:
                 l = self.getTasks()
                 if l:
+                    os.system('clear')
                     self.sync_status = "+ {} tasks".format(len(l))
                     self.sync_status_time = int(datetime.now(timezone('EST')).strftime("%S"))
                     if self.tasks:
@@ -604,6 +620,7 @@ class Application:
                         self.tasks = l
                         self.num_tasks = len(self.tasks)
                 else:
+                    os.system('clear')
                     self.sync_status = "+ 0 tasks"
                     self.sync_status_time = int(datetime.now(timezone('EST')).strftime("%S"))
 

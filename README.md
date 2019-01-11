@@ -1,28 +1,23 @@
-# TodoistSchedulerv1.0
+## TodoistSchedulerv1.0
 A Todoist task tracker.
 
-## RUN:
+### RUN:
 python3 todoist_scheduler.py
 
-## DELETE MEMORY:
+### DELETE MEMORY:
 rm misc/application.data
 
-## CONFIG:
+### CONFIG:
 Add email and password to glob.py for extra ease.
 
-## HELP:
-start: s [task #]
-pause: p
-complete: c
-get: g
-save: #
+### HELP:
+#### start: s [task #]
+#### pause: p
+#### complete: c
+#### get: g
+#### save: #
 
-##DEPENDENCIES:
-pip3 install gnuplotlib
+### DEPENDENCIES:
+?!
 
 The application uses TodoistAPI to collect items and tasks for the tracker.
-
-
-
-Written by:
-Sachin Reddy
