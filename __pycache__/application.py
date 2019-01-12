@@ -16,6 +16,7 @@ from globs import *
 import signal
 import _pickle as pickle
 
+api = todoist.TodoistAPI()
 q = queue.LifoQueue()
 
 def handler(signum, frame):
@@ -27,28 +28,32 @@ class Storage:
 
 class Application:
     def __init__ (self):
-        self.api = todoist.TodoistAPI()
         self.user = USERID
         self.password = PASSWORD
         self.timer = timer.Timer()
         self.started = False
         self.paused = False
+        
         self.total_blocks = 0
         self.break_blocks = 0
         self.total_time = 0
         self.break_time = 0
         self.productive_time = 0
+        
         self.items = []
         self.tasks = []
         self.curr_task_num = None
         self.curr_task = None
+        
         self.task_blocks = 0
         self.task_break_blocks = 0
         self.task_time = 0
         self.task_break_time = 0
+        
         self.goal_hrs = 0
         self.goal_blocks = 0
         self.hour_track = 0
+        
         self.store = Storage()
         self.sync_status = None
         self.sync_status_time = None
@@ -63,22 +68,17 @@ class Application:
             try:
                 signal.signal(signal.SIGALRM, handler)
                 signal.alarm(2)
-                response = self.api.sync()
+                response = api.sync()
                 items = response['items']
                 signal.alarm(0)
             except:
                 signal.alarm(0)
-            if response and 'error_tag' in response and response['error_tag'] == 'AUTH_INVALID_TOKEN':
-                waitval = response['error_extra']['retry_after']
-                time.sleep(waitval)
-                self.userLogin()
-                response = None
         if items:
             today = datetime.now(timezone('EST')).strftime("%a %d %b")
             for item in items:
                 due = item['due_date_utc']
                 if due:
-                    due_est = self.datetimeConverter(due, "%a %d %b")
+                    due_est = self.datetimeConverter(due)
                     if due_est == today:
                         tasks.append(item)
         return tasks
@@ -90,7 +90,7 @@ class Application:
         if l:
             self.items = l
             d = self.task_formatter(self.items)
-            t = sorted(d.items(), key=operator.itemgetter(1), reverse=False)
+            t = sorted(d.items(), key=operator.itemgetter(1), reverse=True)
             return t
 
     def userLogin(self):
@@ -99,36 +99,32 @@ class Application:
             try:
                 signal.signal(signal.SIGALRM, handler)
                 signal.alarm(3)
-                self.api.user.login(self.user, self.password)
+                api.user.login(self.user, self.password)
                 signal.alarm(0)
                 f = True
             except:
                 signal.alarm(0)
 
-    def datetimeConverter(self, due, format):
+    def datetimeConverter(self, due):
         from_zone = tz.tzutc()
         to_zone = tz.tzlocal()
         utc = datetime.strptime(due, "%a %d %b %Y %H:%M:%S +0000")
         utc = utc.replace(tzinfo=from_zone)
         utc = utc.replace(tzinfo=from_zone)
-        central = utc.astimezone(to_zone).strftime(format)
+        central = utc.astimezone(to_zone).strftime("%a %d %b")
         return central
-    
-    def getTotalSeconds(self, s):
-        tp=s.split(':')
-        h = int(tp[0])
-        m = int(tp[1])
-        s = int(tp[2].split('.')[0])
-        return (h * 60 + m) * 60 + s
     
     def task_formatter(self, items):
         d = {}
         for i in items:
-            id = i['id']
+            dv = i['due_date_utc'].split(' ')[4].split(':')
+            due_date_val = int(dv[0])*100 + int(dv[1])
+            priority_val = i['priority']
+            item_val = i['item_order']
             content = i['content']
-            date_est = self.datetimeConverter(i['due_date_utc'], "%H:%M:%S")
-            priority = i['priority']
-            d[(id, content)]=(date_est, -priority)
+            id = i['id']
+            val = due_date_val #(due_date_val, priority_val, item_val)
+            d[(id, content)]=val
         return d
 
     def drawMonitor(self, stdscr):
@@ -137,10 +133,9 @@ class Application:
         # refresh and clear the screen
         stdscr.clear()
         stdscr.refresh()
-        # Init
+        
         t = 0
         b = 0
-        acc_hour_blocks = 0
         k=[]
         arg = ""
         argval = ""
@@ -155,27 +150,27 @@ class Application:
     
         while True:
             stdscr.clear()
+            
             # started and paused conditions - getting values
-            try:
-                if self.started and self.paused:
-                    t, b = self.timer.elapsedPause()
-                    self.task_break_time = self.getTotalSeconds(t)
-                    self.task_break_blocks = b
-                else:
-                    t, b = self.timer.elapsed()
-                    self.task_time = self.getTotalSeconds(t)
-                    self.task_blocks = b
-            except:
-                pass
+            if self.started and self.paused:
+                t, b = self.timer.elapsedPause()
+                self.task_break_time = self.getTotalSeconds(t)
+                self.task_break_blocks = b
+            else:
+                t, b = self.timer.elapsed()
+                self.task_time = self.getTotalSeconds(t)
+                self.task_blocks = b
         
             # getting height and width values of terminal
             height, width = stdscr.getmaxyx()
+            
             # Getting string values for screen
             title = "---  Task Tracker  ---"[:width-1]
             now = "Now:"[:width-1]
             
             if self.curr_task:
                 currTask = "{}".format(self.curr_task[0][1])
+            
             upNext = "Up Next:"[:width-1]
             help = "Help:"[:width-1]
             help_1 = "-> start: s [task #]"[:width-1]
@@ -199,27 +194,32 @@ class Application:
             
             # Calculating times for menu
             timestring = "Time:"[:width-1]
+            
             tsec, sec = divmod(self.total_time+self.task_time, 60)
             hr, min = divmod(tsec, 60)
             totalTime = "Working: %d:%02d:%02d" % (hr, min, sec)
+            
             tsec, sec = divmod(self.productive_time, 60)
             hr, min = divmod(tsec, 60)
             prodTime = "Productive: %d:%02d:%02d" % (hr, min, sec)
+            
             tsec_, sec_ = divmod(self.break_time+self.task_break_time, 60)
             hr_, min_ = divmod(tsec_, 60)
             breakTime = "Break: %d:%02d:%02d" % (hr_, min_, sec_)
             
             # Total Time calculatiaons and formatting
             addstring = "+ {}".format('-'*len(totalTime))
+            
             total_tsec_, total_sec_ = divmod(self.break_time + self.total_time + self.task_break_time + self.task_time, 60)
             total_hr_, total_min_ = divmod(total_tsec_, 60)
             totalTime_ = "Total: %d:%02d:%02d" % (total_hr_, total_min_, total_sec_)
             
             # Status setter and productive calculations
             status = "IDLE"
+            t = "0:00:00.000000"
             if self.started and self.paused:
                 status = "BREAK"
-            elif self.started:
+            else:
                 status = "WORKING"
                 tsec, sec = divmod(self.task_time, 60)
                 hr, min = divmod(tsec, 60)
@@ -228,8 +228,6 @@ class Application:
                     tsec, prodsec = divmod(self.productive_time + (self.task_time - (STREAK_LEN*60)), 60)
                     prodhr, prodmin = divmod(tsec, 60)
                     prodTime = "Productive: %d:%02d:%02d" % (prodhr, prodmin, prodsec)
-            else:
-                t = "0:00:00.000000"
 
             # Efficiency string and formatting
             if (self.total_time+self.task_time) == 0 or (self.break_time+self.task_break_time) == 0:
@@ -245,12 +243,17 @@ class Application:
             statusbarstr = "Press 'q' to exit | {} | Time: {} | Blocks: {}".format(status, t[:7], b)
             filling = " "*((width-len(statusbarstr))//2 - len(statusbarstr)%2)
             statusbarstr = filling + statusbarstr
+            
             start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
             start_y = 0
 
-            #---------------------------------------------------------------#
+            # UNDER CONSTRUCTION:
+            # HOUR CHECK: When the hour ends, store the total amount of blocks worked up to that point
+            hour_check = datetime.now(timezone('EST')).strftime("%S")
+            if hour_check == "00":
+                self.hour_track = self.total_blocks + self.task_blocks
 
-            # SEC CHECK: Set the sync_message back to None after 4 seconds  --  OK
+            # SECOND CHECK: Set the sync_message back to None after 4 seconds
             second_check = int(datetime.now(timezone('EST')).strftime("%S"))
             if self.sync_status_time:
                 seconds_past = second_check - self.sync_status_time
@@ -258,46 +261,37 @@ class Application:
                     self.sync_status = None
                     self.sync_status_time = None
 
-            # Calculating the productive values --  OK
+            # Calculating the productive values
             prod_time = self.productive_time
             if (hr > 0) or (min >= STREAK_LEN):
                 prod_time = self.productive_time + (self.task_time - (STREAK_LEN*60))
 
-            # Check the if still the same day - if not, save and reset the values   -- OK - Change later.
+            # Store value in dictionary - should only write at end of the hour
+            hour_check = datetime.now(timezone('EST')).strftime("%M")
+            if hour_check == "59":
+                new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
+                store[new_now] = {
+                    'total_blocks': self.total_blocks + self.task_blocks,
+                    'break_blocks': self.break_blocks + self.task_break_blocks,
+                    'percent': percent,
+                    'efficiency': eff,
+                    'total_time': self.total_time + self.task_time,
+                    'break_time': self.break_time + self.task_break_time,
+                    'productive_time': self.productive_time,
+                    'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track
+                }
+
+            # Check the if still the same day - if not, save and reset the values
             day_check = datetime.now(timezone('EST')).strftime("%a %d %b")
             if self.today != day_check:
                 pickle.dump(self, open(pickle_path, "wb"))
                 pickle.dump(store, open(pickle_data_path, "wb"))
+                self.total_blocks = 0
+                self.break_blocks = 0
+                self.total_time = 0
+                self.break_time = 0
+                self.productive_time = 0
                 self.today = day_check
-#                self.hour_track = 0
-#                self.total_blocks = 0
-#                self.break_blocks = 0
-#                self.total_time = 0
-#                self.break_time = 0
-#                self.productive_time = 0
-
-            #---------------------------------------------------------------#
-
-            # UNDER CONSTRUCTION:
-            # Store value in dictionary - should only write at end of the hour
-            hour_check = datetime.now(timezone('EST')).strftime("%M")
-            if hour_check == "00":
-                self.hour_track = self.total_blocks
-                acc_hour_blocks = self.total_blocks + self.task_blocks
-            new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
-            store[new_now] = {
-                'total_blocks': self.total_blocks + self.task_blocks,
-                'break_blocks': self.break_blocks + self.task_break_blocks,
-                'percent': percent,
-                'efficiency': eff,
-                'total_time': self.total_time + self.task_time,
-                'break_time': self.break_time + self.task_break_time,
-                'productive_time': self.productive_time,
-                'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track,
-                'acc_hour_blocks': acc_hour_blocks
-            }
-
-            #---------------------------------------------------------------#
 
             # Check the q, get the character and add to the k list
             while q.qsize() != 0:
@@ -310,10 +304,10 @@ class Application:
                     self.sync_status_time = None
                     k=[]
                 elif v_ == 'q':
-                    arg = ""
                     prod_time = self.productive_time
                     if (hr > 0) or (min >= STREAK_LEN):
                         prod_time = self.productive_time + (self.task_time - (STREAK_LEN*60))
+                
                     new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
                     store[new_now] = {
                         'total_blocks': self.total_blocks + self.task_blocks,
@@ -323,13 +317,9 @@ class Application:
                         'total_time': self.total_time + self.task_time,
                         'break_time': self.break_time + self.task_break_time,
                         'productive_time': self.productive_time,
-                        'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track,
-                        'acc_hour_blocks': acc_hour_blocks
+                        # Is this correct?
+                        'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track
                     }
-                    stdscr.clear()
-                    return
-                elif v_ == 'g':
-                    arg = ""
                     stdscr.clear()
                     return
             if k:
@@ -353,9 +343,11 @@ class Application:
                     stdscr.attroff(curses.A_BOLD)
                     if self.curr_task:
                         stdscr.addstr(start_y + 2, 0, currTask)
+                    
                     stdscr.attron(curses.A_BOLD)
                     stdscr.addstr(start_y + 4, 0, upNext)
                     stdscr.attroff(curses.A_BOLD)
+                    
                     for idx, i in enumerate(self.tasks):
                         if i == self.curr_task:
                             stdscr.attron(curses.color_pair(4))
@@ -366,35 +358,43 @@ class Application:
                         else:
                             stdscr.addstr(start_y + 5 + idx, 0, "{}. {}".format(idx+1, i[0][1]))
                     offset = start_y + 5 + len(self.tasks)
+                    
                     stdscr.attron(curses.A_BOLD)
                     stdscr.addstr(start_y+1, width-len(stats)-1, stats)
                     stdscr.attroff(curses.A_BOLD)
+                    
                     stdscr.attron(curses.color_pair(4))
                     stdscr.attron(curses.A_BOLD)
                     stdscr.addstr(start_y+3, width-len(goal)-1, goal)
                     stdscr.attroff(curses.color_pair(4))
                     stdscr.attroff(curses.A_BOLD)
+                    
                     stdscr.addstr(start_y+4, width-len(goalhrs)-1, goalhrs)
                     stdscr.addstr(start_y+5, width-len(goalblocks)-1, goalblocks)
+                    
                     stdscr.attron(curses.color_pair(4))
                     stdscr.attron(curses.A_BOLD)
                     stdscr.addstr(start_y+7, width-len(progress)-1, progress)
                     stdscr.attroff(curses.color_pair(4))
                     stdscr.attroff(curses.A_BOLD)
+                    
                     stdscr.addstr(start_y+8, width-len(progressblocks)-1, progressblocks)
                     stdscr.addstr(start_y+9, width-len(breakblocks)-1, breakblocks)
                     stdscr.addstr(start_y+10, width-len(pcent)-1, pcent)
                     stdscr.addstr(start_y+11, width-len(tasks)-1, tasks)
                     stdscr.addstr(start_y+12, width-len(efficiency)-1, efficiency)
+                    
                     stdscr.attron(curses.color_pair(4))
                     stdscr.attron(curses.A_BOLD)
                     stdscr.addstr(start_y+14, width-len(timestring)-1, timestring)
                     stdscr.attroff(curses.color_pair(4))
                     stdscr.attroff(curses.A_BOLD)
+                    
                     stdscr.addstr(start_y+15, width-len(totalTime)-1, totalTime)
                     stdscr.addstr(start_y+16, width-len(breakTime)-1, breakTime)
                     stdscr.addstr(start_y+17, width-len(addstring)-1, addstring)
                     stdscr.addstr(start_y+18, width-len(totalTime_)-1, totalTime_)
+
                     stdscr.addstr(start_y+20, width-len(prodTime)-1, prodTime)
                 except:
                     pass
@@ -406,23 +406,7 @@ class Application:
                 record_info = "By Hour (Date: Hour | Blocks):"[:width-1]
                 stdscr.addstr(start_y + 2, width-len(record_info)-1, record_info)
                 
-                stdscr.attron(curses.A_BOLD)
-                records_day = "Past 24 Hours:"[:width-1]
-                stdscr.addstr(start_y + 1, 0, records_day)
-                stdscr.attroff(curses.A_BOLD)
-                
                 dlen = len(store)
-                day_sum = 0
-                
-                temp_store = {k: store[k] for k in list(store)[dlen-24:]}
-                for label, val in temp_store.items():
-                    try:
-                        day_sum+=val['acc_hour_blocks']
-                    except:
-                        pass
-                stdscr.addstr(start_y + 2, 0, "--> Hours: {}".format(round(day_sum/60, 2)))
-                stdscr.addstr(start_y + 3, 0, "--> Blocks: {}".format(day_sum))
-                
 
                 longest_label_length = max([len(label) for label, _ in store.items()])
                 label_len = longest_label_length + len(" ▏ ## ")
@@ -432,6 +416,7 @@ class Application:
                     increment = max_value /((width-label_len)-(width/2)-1)
 
                 count_ = 0
+                # does this work properly?
                 if dlen >= 24:
                     temp_store = {k: store[k] for k in list(store)[dlen-24:]}
                     for label, val in temp_store.items():
@@ -441,7 +426,7 @@ class Application:
                         if remainder > 0:
                             bar += chr(ord('█') + (8 - remainder))
                         bar = bar or  '▏'
-                        v = f'{label.rjust(longest_label_length)} ▏ {count:#3d} {bar}'
+                        v = f'{label.rjust(longest_label_length)} ▏ {count:#2d} {bar}'
                         try:
                             if label == list(store)[len(store)-1]:
                                 stdscr.attron(curses.color_pair(4))
@@ -460,7 +445,7 @@ class Application:
                         if remainder > 0:
                             bar += chr(ord('█') + (8 - remainder))
                         bar = bar or  '▏'
-                        v = f'{label.rjust(longest_label_length)} ▏ {count:#3d} {bar}'
+                        v = f'{label.rjust(longest_label_length)} ▏ {count:#2d} {bar}'
                         try:
                             if label == list(store)[len(store)-1]:
                                 stdscr.attron(curses.color_pair(4))
@@ -494,10 +479,11 @@ class Application:
                 stdscr.addstr(height-1, 0, statusbarstr)
                 stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
                 stdscr.attroff(curses.color_pair(3))
+                
+                stdscr.move(height-3, len(iput))
             except:
                 pass
-                    
-            stdscr.move(height-3, len(iput))
+
             if argval:
                 if len(argval) >= 2 and argval.startswith('s') and argval[1:].isdigit():
                     t = int(argval[1:])
@@ -538,6 +524,10 @@ class Application:
                         self.total_blocks += blocks_
                         self.started = False
                     argval = ""
+                elif argval.startswith('g'):
+                    argval = ""
+                    stdscr.clear()
+                    return
                 elif argval.startswith('#'):
                     percent = round(float(self.total_blocks+self.task_blocks) / float(self.goal_blocks) * 100.0, 2)
                     new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
@@ -549,8 +539,7 @@ class Application:
                         'total_time': self.total_time + self.task_time,
                         'break_time': self.break_time + self.task_break_time,
                         'productive_time': self.productive_time,
-                        'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track,
-                        'acc_hour_blocks':acc_hour_blocks
+                        'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track
                     }
                     pickle.dump(self, open(pickle_path, "wb"))
                     pickle.dump(store, open(pickle_data_path, "wb"))
@@ -588,14 +577,14 @@ class Application:
 
     def completeItem(self):
         item = None
-        if not self.started:
-            self.userLogin()
-        try:
-            item = self.api.items.get_by_id(self.curr_task[0][0])
-            item.complete()
-            self.api.commit()
-        except:
-            pass
+        self.userLogin()
+        while not item:
+            item = api.items.get_by_id(self.curr_task[0][0])
+            if item:
+                item.complete()
+                api.commit()
+            else:
+                break
         del self.tasks[self.curr_task_num-1]
         self.curr_task_num = None
         self.curr_task = None
@@ -616,8 +605,7 @@ class Application:
         if not self.started:
             self.userLogin()
             self.tasks = self.getTasks()
-            if self.tasks:
-                self.num_tasks = len(self.tasks)
+            self.num_tasks = len(self.tasks)
 
         if not self.goal_hrs and not self.goal_blocks:
             self.goal_hrs = int(input('Estimated # of hours: '))
@@ -649,3 +637,10 @@ class Application:
                     os.system('clear')
                     self.sync_status = "+ 0 tasks"
                     self.sync_status_time = int(datetime.now(timezone('EST')).strftime("%S"))
+
+    def getTotalSeconds(self, s):
+        tp=s.split(':')
+        h = int(tp[0])
+        m = int(tp[1])
+        s = int(tp[2].split('.')[0])
+        return (h * 60 + m) * 60 + s
