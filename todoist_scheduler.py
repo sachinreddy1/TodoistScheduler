@@ -1,7 +1,11 @@
 import os
-import _pickle as pickle
 import application
 from globs import *
+import sys
+if sys.version_info[0] < 3:
+    import pickle as pickle
+else:
+    import _pickle as pickle
 
 if __name__ == "__main__":
     if not os.path.exists(pickle_path):

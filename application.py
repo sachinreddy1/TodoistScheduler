@@ -14,7 +14,11 @@ import todoist_scheduler
 import getpass
 from globs import *
 import signal
-import _pickle as pickle
+import sys
+if sys.version_info[0] < 3:
+    import pickle as pickle
+else:
+    import _pickle as pickle
 
 q = queue.LifoQueue()
 
@@ -269,12 +273,6 @@ class Application:
                 pickle.dump(self, open(pickle_path, "wb"))
                 pickle.dump(store, open(pickle_data_path, "wb"))
                 self.today = day_check
-#                self.hour_track = 0
-#                self.total_blocks = 0
-#                self.break_blocks = 0
-#                self.total_time = 0
-#                self.break_time = 0
-#                self.productive_time = 0
 
             #---------------------------------------------------------------#
 
@@ -283,7 +281,7 @@ class Application:
             hour_check = datetime.now(timezone('EST')).strftime("%M")
             if hour_check == "00":
                 self.hour_track = self.total_blocks
-                acc_hour_blocks = self.total_blocks + self.task_blocks
+                acc_hour_blocks = self.total_blocks
             new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
             store[new_now] = {
                 'total_blocks': self.total_blocks + self.task_blocks,
@@ -302,12 +300,32 @@ class Application:
             # Check the q, get the character and add to the k list
             while q.qsize() != 0:
                 v_ = chr(q.get())
-                k.append(v_)
+                if ord(v_) != 127:
+                    k.append(v_)
+                elif k:
+                    del k[-1]
+                    arg = arg[:-1]
+
                 if v_ == '\n':
                     argval = arg
                     arg = ""
                     self.sync_status = None
                     self.sync_status_time = None
+                    percent = round(float(self.total_blocks+self.task_blocks) / float(self.goal_blocks) * 100.0, 2)
+                    new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
+                    store[new_now] = {
+                        'total_blocks': self.total_blocks + self.task_blocks,
+                        'break_blocks': self.break_blocks + self.task_break_blocks,
+                        'percent': percent,
+                        'efficiency': eff,
+                        'total_time': self.total_time + self.task_time,
+                        'break_time': self.break_time + self.task_break_time,
+                        'productive_time': self.productive_time,
+                        'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track,
+                        'acc_hour_blocks':acc_hour_blocks
+                    }
+                    pickle.dump(self, open(pickle_path, "wb"))
+                    pickle.dump(store, open(pickle_data_path, "wb"))
                     k=[]
                 elif v_ == 'q':
                     arg = ""
@@ -413,16 +431,23 @@ class Application:
                 
                 dlen = len(store)
                 day_sum = 0
+                past_day_sum = 0
                 
                 temp_store = {k: store[k] for k in list(store)[dlen-24:]}
+                past_temp_store = {k: store[k] for k in list(store)[dlen-48:dlen-24]}
                 for label, val in temp_store.items():
                     try:
                         day_sum+=val['acc_hour_blocks']
                     except:
                         pass
-                stdscr.addstr(start_y + 2, 0, "--> Hours: {}".format(round(day_sum/60, 2)))
-                stdscr.addstr(start_y + 3, 0, "--> Blocks: {}".format(day_sum))
-                
+                for label, val in past_temp_store.items():
+                    try:
+                        past_day_sum+=val['acc_hour_blocks']
+                    except:
+                        pass
+                stdscr.addstr(start_y + 2, 0, "--> Today's Hours: {}".format(round(day_sum/60, 2)))
+                stdscr.addstr(start_y + 3, 0, "--> Yesterday's Hours: {}".format(round(past_day_sum/60, 2)))
+                stdscr.addstr(start_y + 4, 0, "--> Blocks: {}".format(day_sum))
 
                 longest_label_length = max([len(label) for label, _ in store.items()])
                 label_len = longest_label_length + len(" ▏ ## ")
@@ -577,11 +602,11 @@ class Application:
                 k = stdscr.getch()
                 try:
                     k_ = chr(k)
-                    if k_ in LETTERS or k_ == '\n' or k_.isdigit() or k == ord('#'):
+                    if k_ in LETTERS or k_ == '\n' or k_.isdigit() or k == ord('#') or k == 127:
                         q.put(k)
                         if k_ == 'g':
                             return False
-                        if k_ == 'q':
+                        elif k_ == 'q':
                             return True
                 except:
                     pass
