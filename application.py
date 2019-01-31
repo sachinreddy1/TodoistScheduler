@@ -1,3 +1,5 @@
+# coding: utf-8
+
 import todoist
 from datetime import datetime
 from pytz import timezone
@@ -13,6 +15,7 @@ import time
 import todoist_scheduler
 import getpass
 from globs import *
+import subprocess
 import signal
 import sys
 if sys.version_info[0] < 3:
@@ -53,10 +56,10 @@ class Application:
         self.goal_hrs = 0
         self.goal_blocks = 0
         self.hour_track = 0
-        self.store = Storage()
         self.sync_status = None
         self.sync_status_time = None
         self.today = datetime.now(timezone('EST')).strftime("%a %d %b")
+        self.num_tasks = None
     
     def get_todays_tasks(self):
         tasks = []
@@ -142,14 +145,15 @@ class Application:
         stdscr.clear()
         stdscr.refresh()
         # Init
-        t = 0
+        t = "0:00:00.000000"
         b = 0
         acc_hour_blocks = 0
         k=[]
         arg = ""
         argval = ""
-        store = self.store.d
+#        store = self.store
         screen_flag = False
+        self.playing = False
         
         curses.start_color()
         curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
@@ -199,7 +203,10 @@ class Application:
             breakblocks = "Break Blocks: {}".format(self.break_blocks+self.task_break_blocks)
             percent = round(float(self.total_blocks+self.task_blocks) / float(self.goal_blocks) * 100.0, 2)
             pcent = "Percent: {}%".format(percent)
-            tasks = "Tasks: {}/{}".format(self.num_tasks-len(self.tasks),self.num_tasks)
+            if self.tasks:
+                tasks = "Tasks: {}/{}".format(self.num_tasks-len(self.tasks),self.num_tasks)
+            else:
+                tasks = "Tasks: {}/{}".format(0,self.num_tasks)
             
             # Calculating times for menu
             timestring = "Time:"[:width-1]
@@ -223,6 +230,15 @@ class Application:
             status = "IDLE"
             if self.started and self.paused:
                 status = "BREAK"
+                tsec, sec = divmod(self.task_break_time, 60)
+                hr, min = divmod(tsec, 60)
+                if (hr > 0) or (min >= BREAK_LEN):
+                    if not self.playing:
+                        subprocess.call(["afplay", "alarms/alarm_1.mp3"])
+                        self.playing = True
+                else:
+                    self.playing = False
+                
             elif self.started:
                 status = "WORKING"
                 tsec, sec = divmod(self.task_time, 60)
@@ -271,7 +287,7 @@ class Application:
             day_check = datetime.now(timezone('EST')).strftime("%a %d %b")
             if self.today != day_check:
                 pickle.dump(self, open(pickle_path, "wb"))
-                pickle.dump(store, open(pickle_data_path, "wb"))
+                pickle.dump(self.store, open(pickle_data_path, "wb"))
                 self.today = day_check
 
             #---------------------------------------------------------------#
@@ -283,7 +299,7 @@ class Application:
                 self.hour_track = self.total_blocks
                 acc_hour_blocks = self.total_blocks
             new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
-            store[new_now] = {
+            self.store[new_now] = {
                 'total_blocks': self.total_blocks + self.task_blocks,
                 'break_blocks': self.break_blocks + self.task_break_blocks,
                 'percent': percent,
@@ -313,7 +329,7 @@ class Application:
                     self.sync_status_time = None
                     percent = round(float(self.total_blocks+self.task_blocks) / float(self.goal_blocks) * 100.0, 2)
                     new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
-                    store[new_now] = {
+                    self.store[new_now] = {
                         'total_blocks': self.total_blocks + self.task_blocks,
                         'break_blocks': self.break_blocks + self.task_break_blocks,
                         'percent': percent,
@@ -324,8 +340,8 @@ class Application:
                         'hour_blocks': (self.total_blocks + self.task_blocks) - self.hour_track,
                         'acc_hour_blocks':acc_hour_blocks
                     }
-                    pickle.dump(self, open(pickle_path, "wb"))
-                    pickle.dump(store, open(pickle_data_path, "wb"))
+#                    pickle.dump(self, open(pickle_path, "wb"))
+#                    pickle.dump(self.store, open(pickle_data_path, "wb"))
                     k=[]
                 elif v_ == 'q':
                     arg = ""
@@ -333,7 +349,7 @@ class Application:
                     if (hr > 0) or (min >= STREAK_LEN):
                         prod_time = self.productive_time + (self.task_time - (STREAK_LEN*60))
                     new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
-                    store[new_now] = {
+                    self.store[new_now] = {
                         'total_blocks': self.total_blocks + self.task_blocks,
                         'break_blocks': self.break_blocks + self.task_break_blocks,
                         'percent': percent,
@@ -429,12 +445,15 @@ class Application:
                 stdscr.addstr(start_y + 1, 0, records_day)
                 stdscr.attroff(curses.A_BOLD)
                 
-                dlen = len(store)
+                #------------------------ PAST 24 HOURS: -------------------------#
+                
+                dlen = len(self.store)
                 day_sum = 0
                 past_day_sum = 0
                 
-                temp_store = {k: store[k] for k in list(store)[dlen-24:]}
-                past_temp_store = {k: store[k] for k in list(store)[dlen-48:dlen-24]}
+                temp_store = {k: self.store[k] for k in list(self.store)[dlen-24:]}
+                
+                past_temp_store = {k: self.store[k] for k in list(self.store)[dlen-48:dlen-24]}
                 for label, val in temp_store.items():
                     try:
                         day_sum+=val['acc_hour_blocks']
@@ -445,20 +464,23 @@ class Application:
                         past_day_sum+=val['acc_hour_blocks']
                     except:
                         pass
+
                 stdscr.addstr(start_y + 2, 0, "--> Today's Hours: {}".format(round(day_sum/60, 2)))
                 stdscr.addstr(start_y + 3, 0, "--> Yesterday's Hours: {}".format(round(past_day_sum/60, 2)))
                 stdscr.addstr(start_y + 4, 0, "--> Blocks: {}".format(day_sum))
 
-                longest_label_length = max([len(label) for label, _ in store.items()])
+                longest_label_length = max([len(label) for label, _ in self.store.items()])
                 label_len = longest_label_length + len(" ▏ ## ")
-                max_value = max([x['hour_blocks'] for _, x in store.items()])
+                max_value = max([x['hour_blocks'] for _, x in self.store.items()])
                 increment = 1
                 if max_value != 0:
                     increment = max_value /((width-label_len)-(width/2)-1)
+                
+                #----------------------- RECORDING BLOCKS: ---------------------------#
 
                 count_ = 0
                 if dlen >= 24:
-                    temp_store = {k: store[k] for k in list(store)[dlen-24:]}
+                    temp_store = {k: self.store[k] for k in list(self.store)[dlen-24:]}
                     for label, val in temp_store.items():
                         count = val['hour_blocks']
                         bar_chunks, remainder = divmod(int(count * 8 / increment), 8)
@@ -468,7 +490,7 @@ class Application:
                         bar = bar or  '▏'
                         v = f'{label.rjust(longest_label_length)} ▏ {count:#3d} {bar}'
                         try:
-                            if label == list(store)[len(store)-1]:
+                            if label == list(self.store)[len(self.store)-1]:
                                 stdscr.attron(curses.color_pair(4))
                                 stdscr.attron(curses.A_BOLD)
                             stdscr.addstr(4+count_, int(width/2)-1, v)
@@ -478,7 +500,7 @@ class Application:
                         stdscr.attroff(curses.A_BOLD)
                         count_+=1
                 else:
-                    for label, val in store.items():
+                    for label, val in self.store.items():
                         count = val['hour_blocks']
                         bar_chunks, remainder = divmod(int(count * 8 / increment), 8)
                         bar = '█' * bar_chunks
@@ -487,7 +509,7 @@ class Application:
                         bar = bar or  '▏'
                         v = f'{label.rjust(longest_label_length)} ▏ {count:#3d} {bar}'
                         try:
-                            if label == list(store)[len(store)-1]:
+                            if label == list(self.store)[len(self.store)-1]:
                                 stdscr.attron(curses.color_pair(4))
                                 stdscr.attron(curses.A_BOLD)
                             stdscr.addstr(4+count_, int(width/2)-1, v)
@@ -496,9 +518,13 @@ class Application:
                         stdscr.attroff(curses.color_pair(4))
                         stdscr.attroff(curses.A_BOLD)
                         count_+=1
+            
+            #----------------------- INPUT ---------------------------#
 
             # Printing the help screen, input menu, and status bar
+            
             try:
+                iput = "--> {}".format(arg)
                 stdscr.attron(curses.A_BOLD)
                 stdscr.addstr(offset+1, 0, help)
                 stdscr.attroff(curses.A_BOLD)
@@ -510,7 +536,6 @@ class Application:
                 stdscr.addstr(offset+6, 0, help_5)
                 stdscr.addstr(offset+7, 0, help_6)
                 
-                iput = "--> {}".format(arg)
                 stdscr.addstr(height-3, 0, iput)
                 if self.sync_status:
                     stdscr.addstr(height-3, int(width/2)-int(len(self.sync_status))-3, self.sync_status)
@@ -519,18 +544,20 @@ class Application:
                 stdscr.addstr(height-1, 0, statusbarstr)
                 stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
                 stdscr.attroff(curses.color_pair(3))
+                stdscr.move(height-3, len(iput))
             except:
                 pass
                     
-            stdscr.move(height-3, len(iput))
+            
             if argval:
                 if len(argval) >= 2 and argval.startswith('s') and argval[1:].isdigit():
-                    t = int(argval[1:])
-                    if t - 1 >= 0 and t - 1 < len(self.tasks):
-                        self.curr_task_num = t
+                    t_ = int(argval[1:])
+                    if t_ - 1 >= 0 and t_ - 1 < len(self.tasks):
+                        self.curr_task_num = t_
                         self.curr_task = self.tasks[self.curr_task_num-1]
-                        self.timer = timer.Timer()
-                        self.timer.start()
+                        if not self.paused:
+                            self.timer = timer.Timer()
+                            self.timer.start()
                         self.started = True
                     argval = ""
                 elif argval.startswith('p'):
@@ -566,7 +593,7 @@ class Application:
                 elif argval.startswith('#'):
                     percent = round(float(self.total_blocks+self.task_blocks) / float(self.goal_blocks) * 100.0, 2)
                     new_now = datetime.now(timezone('EST')).strftime("%b %d: %H")
-                    store[new_now] = {
+                    self.store[new_now] = {
                         'total_blocks': self.total_blocks + self.task_blocks,
                         'break_blocks': self.break_blocks + self.task_break_blocks,
                         'percent': percent,
@@ -578,7 +605,7 @@ class Application:
                         'acc_hour_blocks':acc_hour_blocks
                     }
                     pickle.dump(self, open(pickle_path, "wb"))
-                    pickle.dump(store, open(pickle_data_path, "wb"))
+                    pickle.dump(self.store, open(pickle_data_path, "wb"))
                     self.sync_status = "Saved."
                     self.sync_status_time = int(datetime.now(timezone('EST')).strftime("%S"))
                     argval = ""
@@ -638,18 +665,20 @@ class Application:
         if len(self.password) == 0:
             self.password = getpass.getpass('Password: ')
         
-        if not self.started:
+        if not self.started and not self.tasks:
             self.userLogin()
             self.tasks = self.getTasks()
             if self.tasks:
                 self.num_tasks = len(self.tasks)
 
+        if os.path.exists(pickle_data_path):
+            self.store = pickle.load(open(pickle_data_path, "rb"))
+        else:
+            self.store = Storage().d
+
         if not self.goal_hrs and not self.goal_blocks:
             self.goal_hrs = int(input('Estimated # of hours: '))
             self.goal_blocks = self.goal_hrs * int(MIN_IN_HR / BLOCK_LEN)
-
-        if os.path.exists(pickle_data_path):
-            self.store.d = pickle.load(open(pickle_data_path, "rb"))
 
         f = False
         while not f:

@@ -12,10 +12,10 @@ if __name__ == "__main__":
         a = application.Application()
         a.run()
         pickle.dump(a, open(pickle_path, "wb"))
-        pickle.dump(a.store.d, open(pickle_data_path, "wb"))
+        pickle.dump(a.store, open(pickle_data_path, "wb"))
     else:
         a = pickle.load(open(pickle_path, "rb"))
         a.run()
         pickle.dump(a, open(pickle_path, "wb"))
-        pickle.dump(a.store.d, open(pickle_data_path, "wb"))
+        pickle.dump(a.store, open(pickle_data_path, "wb"))
 
